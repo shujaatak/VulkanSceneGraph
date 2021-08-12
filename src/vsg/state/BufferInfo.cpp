@@ -26,11 +26,13 @@ using namespace vsg;
 //
 BufferInfo::BufferInfo()
 {
+    std::cout<<"BufferInfo::BufferInfo() "<<this<<std::endl;
 }
 
 BufferInfo::BufferInfo(Data* in_data) :
     data(in_data)
 {
+    std::cout<<"BufferInfo::BufferInfo(Data* = "<<data<<") "<<this<<std::endl;
 }
 
 BufferInfo::BufferInfo(Buffer* in_buffer, VkDeviceSize in_offset, VkDeviceSize in_range, Data* in_data) :
@@ -39,11 +41,13 @@ BufferInfo::BufferInfo(Buffer* in_buffer, VkDeviceSize in_offset, VkDeviceSize i
     range(in_range),
     data(in_data)
 {
+    std::cout<<"BufferInfo::BufferInfo(Data("<<data<<", "<<offset<<", "<<range<<", "<<data<<") "<<this<<std::endl;
 }
 
 BufferInfo::~BufferInfo()
 {
-//    std::cout<<"BufferInfo::~BufferInfo() buffer = "<<buffer<<", offset = "<<offset<<", range = "<<range<<std::endl;
+    std::cout<<"BufferInfo::~BufferInfo() "<<this<<std::endl;
+    release();
 }
 
 void BufferInfo::release()

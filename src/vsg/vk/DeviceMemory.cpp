@@ -293,6 +293,8 @@ DeviceMemory::DeviceMemory(Device* device, const VkMemoryRequirements& memRequir
 {
     uint32_t typeFilter = memRequirements.memoryTypeBits;
 
+    std::cout<<"DeviceMemory::DeviceMemory() "<<this<<std::endl;
+
     // find the memory type to use
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(*(device->getPhysicalDevice()), &memProperties);
@@ -336,6 +338,8 @@ DeviceMemory::DeviceMemory(Device* device, const VkMemoryRequirements& memRequir
 
 DeviceMemory::~DeviceMemory()
 {
+    std::cout<<"DeviceMemory::~DeviceMemory() "<<this<<std::endl;
+
     if (_deviceMemory)
     {
 #if DO_CHECK

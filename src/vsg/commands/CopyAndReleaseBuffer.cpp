@@ -13,6 +13,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/commands/CopyAndReleaseBuffer.h>
 #include <vsg/io/Options.h>
 
+#include <iostream>
+
 using namespace vsg;
 
 CopyAndReleaseBuffer::CopyAndReleaseBuffer(ref_ptr<MemoryBufferPools> optional_stagingMemoryBufferPools) :
@@ -32,13 +34,13 @@ void CopyAndReleaseBuffer::copy(ref_ptr<Data> data, ref_ptr<BufferInfo> dest)
     VkDeviceSize datalSize = data->dataSize();
     VkDeviceSize alignment = std::max(VkDeviceSize(4), VkDeviceSize(data->valueSize()));
 
-    //std::cout<<"CopyAndReleaseImage::copyDirectly() datalSize = "<<datalSize<<std::endl;
+    std::cout<<"CopyAndReleaseImage::copyDirectly() datalSize = "<<datalSize<<std::endl;
 
     VkMemoryPropertyFlags memoryPropertyFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     ref_ptr<BufferInfo> stagingBufferInfo = stagingMemoryBufferPools->reserveBuffer(datalSize, alignment, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, memoryPropertyFlags);
     stagingBufferInfo->data = data;
 
-    // std::cout<<"stagingBufferInfo->buffer "<<stagingBufferInfo->buffer.get()<<", "<<stagingBufferInfo->offset<<", "<<stagingBufferInfo->range<<")"<<std::endl;
+    std::cout<<"stagingBufferInfo->buffer "<<stagingBufferInfo->buffer.get()<<", "<<stagingBufferInfo->offset<<", "<<stagingBufferInfo->range<<")"<<std::endl;
 
     auto deviceID = stagingMemoryBufferPools->device->deviceID;
     ref_ptr<Buffer> imageStagingBuffer(stagingBufferInfo->buffer);
@@ -70,9 +72,21 @@ void CopyAndReleaseBuffer::CopyData::record(CommandBuffer& commandBuffer) const
 
 void CopyAndReleaseBuffer::record(CommandBuffer& commandBuffer) const
 {
+    std::cout<<"CopyAndReleaseBuffer::record() "<<
+            "_readyToClear.size = "<<_readyToClear.size()<<" capacity ="<<_readyToClear.capacity()<<
+            "_completed.size = "<<_completed.size()<<" capacity ="<<_completed.capacity()<<
+            "_pending.size = "<<_pending.size()<<" capacity ="<<_pending.capacity()<<
+            std::endl;
+
+
     std::scoped_lock lock(_mutex);
 
-    for (auto& copyData : _readyToClear) copyData.source.release();
+    for (auto& copyData : _readyToClear)
+    {
+        std::cout<<"    _readyToClear.copyData.source = "<<copyData.source<<std::endl;
+        copyData.source.release();
+    }
+
     _readyToClear.clear();
 
     _readyToClear.swap(_completed);
@@ -83,4 +97,46 @@ void CopyAndReleaseBuffer::record(CommandBuffer& commandBuffer) const
     }
 
     _pending.swap(_completed);
+}
+
+CopyAndReleaseBuffer::CopyData::CopyData()
+{
+    std::cout<<"CopyData::CopyData()"<<std::endl;
+}
+
+CopyAndReleaseBuffer::CopyData::CopyData(const CopyData& cd)
+{
+    std::cout<<"CopyData::CopyData(CopyData&"<<&cd<<")"<<std::endl;
+    source = cd.source;
+    destination = cd.destination;
+}
+
+CopyAndReleaseBuffer::CopyData::CopyData(ref_ptr<BufferInfo> s, ref_ptr<BufferInfo> d)
+{
+    source = s;
+    destination = d;
+    std::cout<<"CopyData::CopyData("<<s<<", "<<d<<") "<<source->referenceCount()<<", "<<destination->referenceCount()<<std::endl;
+ }
+
+CopyAndReleaseBuffer::CopyData::~CopyData()
+{
+    std::cout<<"CopyData::~CopyData()";
+    if (source)  std::cout<<"   source->referenceCount() = "<<source->referenceCount()<<std::endl;
+    if (destination)  std::cout<<"   destination->referenceCount() = "<<destination->referenceCount()<<std::endl;
+
+    source = {};
+    destination = {};
+
+    std::cout<<std::endl;
+
+}
+
+CopyAndReleaseBuffer::CopyData& CopyAndReleaseBuffer::CopyData::operator = (const CopyData& cd)
+{
+    std::cout<<"CopyData::operator = (const CopyData& cd)"<<std::endl;
+
+    source = cd.source;
+    destination = cd.destination;
+
+    return *this;
 }

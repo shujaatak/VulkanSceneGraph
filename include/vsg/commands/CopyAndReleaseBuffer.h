@@ -49,6 +49,12 @@ namespace vsg
 
         struct CopyData
         {
+            CopyData();
+            CopyData(ref_ptr<BufferInfo> s, ref_ptr<BufferInfo> d);
+            CopyData(const CopyData& cd);
+            ~CopyData();
+            CopyData& operator = (const CopyData& cd);
+
             ref_ptr<BufferInfo> source;
             ref_ptr<BufferInfo> destination;
 
