@@ -10,7 +10,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/io/Options.h>
 #include <vsg/maths/transform.h>
+#include <vsg/nodes/MatrixTransform.h>
 
 using namespace vsg;
 
@@ -178,6 +180,10 @@ t_sphere<T> t_computeFrustumBound(const t_mat4<T>& m)
         if (new_r > r) r = new_r;
     };
 
+    //
+    // TODO : depth range should probably be 0 to 1 for Vulkan, rather than -1 to 1 for OpenGL.
+    //
+
     // compute the a2 the radius squared of the near plane relative to the near planes mid point
     vec_type near_center = inv_m * vec_type(0.0, 0.0, -1.0);
     value_type a2 = length2(inv_m * vec_type(-1.0, -1.0, -1.0) - near_center);
@@ -285,4 +291,14 @@ bool vsg::transform(CoordinateConvention source, CoordinateConvention destinatio
         }
     }
     return true;
+}
+
+void ComputeTransform::apply(const Transform& transform)
+{
+    matrix = transform.transform(matrix);
+}
+
+void ComputeTransform::apply(const MatrixTransform& mt)
+{
+    matrix = matrix * mt.matrix;
 }

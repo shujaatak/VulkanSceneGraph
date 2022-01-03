@@ -84,8 +84,8 @@ namespace vsg
         using SPIRV = std::vector<uint32_t>;
 
         ShaderModule();
-        ShaderModule(const std::string& in_source, ref_ptr<ShaderCompileSettings> in_hints = {});
-        ShaderModule(const SPIRV& in_code);
+        explicit ShaderModule(const std::string& in_source, ref_ptr<ShaderCompileSettings> in_hints = {});
+        explicit ShaderModule(const SPIRV& in_code);
         ShaderModule(const std::string& source, const SPIRV& in_code);
 
         std::string source;
@@ -99,8 +99,6 @@ namespace vsg
 
         void read(Input& input) override;
         void write(Output& output) const override;
-
-        static ref_ptr<ShaderModule> read(const std::string& filename);
 
         // compile the Vulkan object, context parameter used for Device
         void compile(Context& context);
@@ -125,5 +123,8 @@ namespace vsg
         vk_buffer<ref_ptr<Implementation>> _implementation;
     };
     VSG_type_name(vsg::ShaderModule);
+
+    /// replace all instances of #include "filename.extension" with the contents of the related files.
+    extern VSG_DECLSPEC std::string insertIncludes(const std::string& source, ref_ptr<const Options> options);
 
 } // namespace vsg

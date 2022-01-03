@@ -27,16 +27,16 @@ void BuildAccelerationStructureTraversal::apply(Object& object)
     object.traverse(*this);
 }
 
-void BuildAccelerationStructureTraversal::apply(MatrixTransform& mt)
+void BuildAccelerationStructureTraversal::apply(Transform& transfom)
 {
-    _transformStack.pushAndPreMult(mt.matrix);
+    _transformStack.push(transfom);
 
-    mt.traverse(*this);
+    transfom.traverse(*this);
 
     _transformStack.pop();
 }
 
-void BuildAccelerationStructureTraversal::apply(vsg::Geometry& geometry)
+void BuildAccelerationStructureTraversal::apply(Geometry& geometry)
 {
     if (geometry.arrays.size() == 0) return;
 
@@ -46,17 +46,21 @@ void BuildAccelerationStructureTraversal::apply(vsg::Geometry& geometry)
     {
         // create new blas and add to cache
         blas = BottomLevelAccelerationStructure::create(_device);
+#if 0 // TODO
         auto accelGeom = AccelerationGeometry::create();
         accelGeom->verts = geometry.arrays[0];
         accelGeom->indices = geometry.indices;
         blas->geometries.push_back(accelGeom);
+#else
+        throw "BuildAccelerationStructureTraversal::compile() not implemented";
+#endif
     }
 
     // create a geometry instance for this geometry using the blas that represents it and the current transform matrix
     createGeometryInstance(blas);
 }
 
-void BuildAccelerationStructureTraversal::apply(vsg::VertexIndexDraw& vid)
+void BuildAccelerationStructureTraversal::apply(VertexIndexDraw& vid)
 {
     if (vid.arrays.size() == 0) return;
 
@@ -66,8 +70,8 @@ void BuildAccelerationStructureTraversal::apply(vsg::VertexIndexDraw& vid)
     {
         blas = BottomLevelAccelerationStructure::create(_device);
         auto accelGeom = AccelerationGeometry::create();
-        accelGeom->verts = vid.arrays[0];
-        accelGeom->indices = vid.indices;
+        accelGeom->assignVertices(vid.arrays[0]->data);
+        accelGeom->assignIndices(vid.indices->data);
         blas->geometries.push_back(accelGeom);
     }
 

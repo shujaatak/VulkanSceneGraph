@@ -23,11 +23,11 @@ namespace vsg
 
         DynamicState();
 
-        DynamicState(const DynamicStates& states) :
+        explicit DynamicState(const DynamicStates& states) :
             dynamicStates(states) {}
 
         template<typename... Args>
-        DynamicState(Args... args) :
+        explicit DynamicState(Args... args) :
             dynamicStates({args...}) {}
 
         /// VkPipelineDynamicStateCreateInfo settings
@@ -35,6 +35,7 @@ namespace vsg
 
         void read(Input& input) override;
         void write(Output& output) const override;
+
         void apply(Context& context, VkGraphicsPipelineCreateInfo& pipelineInfo) const override;
 
     protected:

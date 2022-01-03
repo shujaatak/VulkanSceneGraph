@@ -33,18 +33,42 @@ Geometry::~Geometry()
 {
 }
 
+void Geometry::assignArrays(const DataList& arrayData)
+{
+    arrays.clear();
+    arrays.reserve(arrayData.size());
+    for (auto& data : arrayData)
+    {
+        arrays.push_back(BufferInfo::create(data));
+    }
+}
+
+void Geometry::assignIndices(ref_ptr<vsg::Data> indexData)
+{
+    if (indexData)
+        indices = BufferInfo::create(indexData);
+    else
+        indices = {};
+}
+
 void Geometry::read(Input& input)
 {
     Node::read(input);
 
     input.read("firstBinding", firstBinding);
-    arrays.resize(input.readValue<uint32_t>("NumArrays"));
-    for (auto& array : arrays)
+
+    DataList dataList;
+    dataList.resize(input.readValue<uint32_t>("NumArrays"));
+    for (auto& array : dataList)
     {
         input.readObject("Array", array);
     }
+    assignArrays(dataList);
 
-    input.readObject("Indices", indices);
+    ref_ptr<vsg::Data> indices_data;
+    input.readObject("Indices", indices_data);
+
+    assignIndices(indices_data);
 
     commands.resize(input.readValue<uint32_t>("NumCommands"));
     for (auto& command : commands)
@@ -61,10 +85,16 @@ void Geometry::write(Output& output) const
     output.writeValue<uint32_t>("NumArrays", arrays.size());
     for (auto& array : arrays)
     {
-        output.writeObject("Array", array.get());
+        if (array)
+            output.writeObject("Array", array->data.get());
+        else
+            output.writeObject("Array", nullptr);
     }
 
-    output.writeObject("Indices", indices.get());
+    if (indices)
+        output.writeObject("Indices", indices->data.get());
+    else
+        output.writeObject("Indices", nullptr);
 
     output.writeValue<uint32_t>("NumCommands", commands.size());
     for (auto& command : commands)
@@ -86,58 +116,45 @@ void Geometry::compile(Context& context)
         command->compile(context);
     }
 
-    auto& vkd = _vulkanData[context.deviceID];
+    auto deviceID = context.deviceID;
 
-    vkd = {};
-
-    bool failure = false;
-
-    if (indices)
-    {
-        DataList dataList;
-        dataList.reserve(arrays.size() + 1);
-        dataList.insert(dataList.end(), arrays.begin(), arrays.end());
-        dataList.emplace_back(indices);
-
-        auto bufferInfoList = vsg::createBufferAndTransferData(context, dataList, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
-        if (!bufferInfoList.empty())
-        {
-            BufferInfoList vertexBufferInfo(bufferInfoList.begin(), bufferInfoList.begin() + arrays.size());
-
-            for (auto& bufferInfo : vertexBufferInfo)
-            {
-                vkd.buffers.push_back(bufferInfo.buffer);
-                vkd.vkBuffers.push_back(bufferInfo.buffer->vk(context.deviceID));
-                vkd.offsets.push_back(bufferInfo.offset);
-            }
-
-            vkd.bufferInfo = bufferInfoList.back();
-            vkd.indexType = computeIndexType(indices);
-        }
-        else
-            failure = true;
-    }
+    bool requiresCreateAndCopy = false;
+    if (indices && indices->requiresCopy(deviceID))
+        requiresCreateAndCopy = true;
     else
     {
-        auto vertexBufferInfo = vsg::createBufferAndTransferData(context, arrays, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
-        if (!vertexBufferInfo.empty())
+        for (auto& array : arrays)
         {
-            for (auto& bufferInfo : vertexBufferInfo)
+            if (array->requiresCopy(deviceID))
             {
-                vkd.buffers.push_back(bufferInfo.buffer);
-                vkd.vkBuffers.push_back(bufferInfo.buffer->vk(context.deviceID));
-                vkd.offsets.push_back(bufferInfo.offset);
+                requiresCreateAndCopy = true;
+                break;
             }
         }
-        else
-            failure = true;
     }
 
-    if (failure)
+    if (!requiresCreateAndCopy)
     {
-        //std::cout<<"Failed to create required arrays/indices buffers on GPU."<<std::endl;
-        vkd = {};
         return;
+    }
+
+    auto& vkd = _vulkanData[deviceID];
+    vkd = {};
+
+    BufferInfoList combinedBufferInfos(arrays);
+    if (indices)
+    {
+        combinedBufferInfos.push_back(indices);
+        indexType = computeIndexType(indices->data);
+    }
+
+    if (createBufferAndTransferData(context, combinedBufferInfos, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE))
+    {
+        for (auto& bufferInfo : arrays)
+        {
+            vkd.vkBuffers.push_back(bufferInfo->buffer->vk(deviceID));
+            vkd.offsets.push_back(bufferInfo->offset);
+        }
     }
 }
 
@@ -151,7 +168,7 @@ void Geometry::record(CommandBuffer& commandBuffer) const
 
     if (indices)
     {
-        vkCmdBindIndexBuffer(cmdBuffer, vkd.bufferInfo.buffer->vk(commandBuffer.deviceID), vkd.bufferInfo.offset, vkd.indexType);
+        vkCmdBindIndexBuffer(cmdBuffer, indices->buffer->vk(commandBuffer.deviceID), indices->offset, indexType);
     }
 
     for (auto& command : commands)

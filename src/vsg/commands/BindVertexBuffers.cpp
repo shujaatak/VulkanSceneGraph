@@ -17,18 +17,23 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 using namespace vsg;
 
+BindVertexBuffers::BindVertexBuffers(uint32_t in_firstBinding, const DataList& in_arrays) :
+    firstBinding(in_firstBinding)
+{
+    assignArrays(in_arrays);
+}
+
 BindVertexBuffers::~BindVertexBuffers()
 {
-    for (auto& vkd : _vulkanData)
+}
+
+void BindVertexBuffers::assignArrays(const DataList& arrayData)
+{
+    arrays.clear();
+    arrays.reserve(arrayData.size());
+    for (auto& data : arrayData)
     {
-        size_t numBufferEntries = std::min(vkd.buffers.size(), vkd.offsets.size());
-        for (size_t i = 0; i < numBufferEntries; ++i)
-        {
-            if (vkd.buffers[i])
-            {
-                vkd.buffers[i]->release(vkd.offsets[i], 0); // TODO
-            }
-        }
+        arrays.push_back(BufferInfo::create(data));
     }
 }
 
@@ -42,17 +47,16 @@ void BindVertexBuffers::read(Input& input)
     if (input.version_greater_equal(0, 1, 4))
     {
         input.read("firstBinding", firstBinding);
-        input.read("arrays", arrays);
     }
-    else
+
+    // read vertex arrays
+    DataList dataList;
+    dataList.resize(input.readValue<uint32_t>("NumArrays"));
+    for (auto& array : dataList)
     {
-        // read vertex arrays
-        arrays.resize(input.readValue<uint32_t>("NumArrays"));
-        for (auto& array : arrays)
-        {
-            input.read("Array", array);
-        }
+        input.readObject("Array", array);
     }
+    assignArrays(dataList);
 }
 
 void BindVertexBuffers::write(Output& output) const
@@ -62,15 +66,15 @@ void BindVertexBuffers::write(Output& output) const
     if (output.version_greater_equal(0, 1, 4))
     {
         output.write("firstBinding", firstBinding);
-        output.write("arrays", arrays);
     }
-    else
+
+    output.writeValue<uint32_t>("NumArrays", arrays.size());
+    for (auto& array : arrays)
     {
-        output.writeValue<uint32_t>("NumArrays", arrays.size());
-        for (auto& array : arrays)
-        {
-            output.write("Array", array);
-        }
+        if (array)
+            output.writeObject("Array", array->data.get());
+        else
+            output.writeObject("Array", nullptr);
     }
 }
 
@@ -79,21 +83,35 @@ void BindVertexBuffers::compile(Context& context)
     // nothing to compile
     if (arrays.empty()) return;
 
+    auto deviceID = context.deviceID;
+
+    bool requiresCreateAndCopy = false;
+    for (auto& array : arrays)
+    {
+        if (array->requiresCopy(deviceID))
+        {
+            requiresCreateAndCopy = true;
+            break;
+        }
+    }
+
+    if (!requiresCreateAndCopy)
+    {
+        return;
+    }
+
     auto& vkd = _vulkanData[context.deviceID];
 
-    // already compiled
-    if (vkd.buffers.size() == arrays.size()) return;
-
-    vkd.buffers.clear();
     vkd.vkBuffers.clear();
     vkd.offsets.clear();
 
-    auto bufferDataList = vsg::createBufferAndTransferData(context, arrays, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
-    for (auto& bufferData : bufferDataList)
+    if (createBufferAndTransferData(context, arrays, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE))
     {
-        vkd.buffers.push_back(bufferData.buffer);
-        vkd.vkBuffers.push_back(bufferData.buffer->vk(context.deviceID));
-        vkd.offsets.push_back(bufferData.offset);
+        for (auto& bufferInfo : arrays)
+        {
+            vkd.vkBuffers.push_back(bufferInfo->buffer->vk(context.deviceID));
+            vkd.offsets.push_back(bufferInfo->offset);
+        }
     }
 }
 

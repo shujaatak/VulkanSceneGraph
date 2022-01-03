@@ -21,7 +21,7 @@ namespace vsg
     class VSG_DECLSPEC Event : public Inherit<Object, Event>
     {
     public:
-        Event(Device* device, VkEventCreateFlags flags = 0);
+        explicit Event(Device* device, VkEventCreateFlags flags = 0);
 
         operator VkEvent() const { return _event; }
         VkEvent vk() const { return _event; }
@@ -29,10 +29,10 @@ namespace vsg
         /// set the state of the vkEvent to signaled
         void set();
 
-        /// set the state of the vkEvent to unsignaled.
+        /// set the state of the vkEvent to unsignalled.
         void reset();
 
-        /// get the status of the vkEvent, return VK_EVENT_SET for a signaled event, VK_EVENT_RESET for unsignaled.
+        /// get the status of the vkEvent, return VK_EVENT_SET for a signaled event, VK_EVENT_RESET for unsignalled.
         VkResult status();
 
     protected:

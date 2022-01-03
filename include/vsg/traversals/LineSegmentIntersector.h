@@ -30,8 +30,8 @@ namespace vsg
     class VSG_DECLSPEC LineSegmentIntersector : public Inherit<Intersector, LineSegmentIntersector>
     {
     public:
-        LineSegmentIntersector(const dvec3& s, const dvec3& e);
-        LineSegmentIntersector(const Camera& camera, int32_t x, int32_t y);
+        LineSegmentIntersector(const dvec3& s, const dvec3& e, ref_ptr<ArrayState> initialArrayData = {});
+        LineSegmentIntersector(const Camera& camera, int32_t x, int32_t y, ref_ptr<ArrayState> initialArrayData = {});
 
         struct Intersection
         {
@@ -53,7 +53,7 @@ namespace vsg
 
         void add(const dvec3& intersection, double ratio, const IndexRatios& indexRatios);
 
-        void pushTransform(const dmat4& m) override;
+        void pushTransform(const Transform& transform) override;
         void popTransform() override;
 
         /// check for intersection intersects with sphere

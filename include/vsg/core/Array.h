@@ -42,15 +42,29 @@ namespace vsg
             _data(nullptr),
             _size(0) {}
 
+        Array(const Array& rhs) :
+            Data(rhs._layout, sizeof(value_type)),
+            _data(nullptr),
+            _size(rhs._size)
+        {
+            if (_size != 0)
+            {
+                _data = new value_type[_size];
+                auto dest_v = _data;
+                for (auto& v : rhs) *(dest_v++) = v;
+            }
+            dirty();
+        }
+
         explicit Array(uint32_t numElements, Layout layout = {}) :
             Data(layout, sizeof(value_type)),
             _data(new value_type[numElements]),
-            _size(numElements) {}
+            _size(numElements) { dirty(); }
 
         Array(uint32_t numElements, value_type* data, Layout layout = {}) :
             Data(layout, sizeof(value_type)),
             _data(data),
-            _size(numElements) {}
+            _size(numElements) { dirty(); }
 
         Array(uint32_t numElements, const value_type& value, Layout layout = {}) :
             Data(layout, sizeof(value_type)),
@@ -58,6 +72,7 @@ namespace vsg
             _size(numElements)
         {
             for (auto& v : *this) v = value;
+            dirty();
         }
 
         Array(ref_ptr<Data> data, uint32_t offset, uint32_t stride, uint32_t numElements, Layout layout = Layout()) :
@@ -76,6 +91,8 @@ namespace vsg
 
             iterator itr = begin();
             for (const value_type& v : l) { (*itr++) = v; }
+
+            dirty();
         }
 
         explicit Array(ref_ptr<Data> data, uint32_t offset, uint32_t stride, std::initializer_list<value_type> l) :
@@ -86,6 +103,8 @@ namespace vsg
 
             iterator itr = begin();
             for (const value_type& v : l) { (*itr++) = v; }
+
+            dirty();
         }
 
         template<typename... Args>
@@ -123,11 +142,11 @@ namespace vsg
 
             if (input.version_greater_equal(0, 0, 1))
             {
-                auto storage = input.readObject<Data>("Storage");
-                if (storage)
+                auto data_storage = input.readObject<Data>("Storage");
+                if (data_storage)
                 {
                     uint32_t offset = input.readValue<uint32_t>("Offset");
-                    assign(storage, offset, _layout.stride, width_size, _layout);
+                    assign(data_storage, offset, _layout.stride, width_size, _layout);
                     return;
                 }
             }
@@ -154,6 +173,8 @@ namespace vsg
                 _storage = nullptr;
 
                 input.read(new_total_size, _data);
+
+                dirty();
             }
         }
 
@@ -192,6 +213,27 @@ namespace vsg
             _storage = nullptr;
         }
 
+        Array& operator=(const Array& rhs)
+        {
+            if (&rhs == this) return *this;
+
+            clear();
+
+            _layout = rhs._layout;
+            _size = rhs._size;
+
+            if (_size != 0)
+            {
+                _data = new value_type[_size];
+                auto dest_v = _data;
+                for (auto& v : rhs) *(dest_v++) = v;
+            }
+
+            dirty();
+
+            return *this;
+        }
+
         void assign(uint32_t numElements, value_type* data, Layout layout = Layout())
         {
             _delete();
@@ -201,6 +243,8 @@ namespace vsg
             _size = numElements;
             _data = data;
             _storage = nullptr;
+
+            dirty();
         }
 
         void assign(ref_ptr<Data> storage, uint32_t offset, uint32_t stride, uint32_t numElements, Layout layout = Layout())
@@ -220,6 +264,8 @@ namespace vsg
                 _data = nullptr;
                 _size = 0;
             }
+
+            dirty();
         }
 
         // release the data so that ownership can be passed on, the local data pointer and size is set to 0 and destruction of Array will no result in the data being deleted.

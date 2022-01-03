@@ -18,9 +18,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/nodes/CullNode.h>
 #include <vsg/nodes/Geometry.h>
 #include <vsg/nodes/LOD.h>
-#include <vsg/nodes/MatrixTransform.h>
 #include <vsg/nodes/PagedLOD.h>
 #include <vsg/nodes/StateGroup.h>
+#include <vsg/nodes/Transform.h>
 #include <vsg/nodes/VertexIndexDraw.h>
 #include <vsg/state/GraphicsPipeline.h>
 #include <vsg/traversals/Intersector.h>
@@ -36,10 +36,10 @@ struct PushPopNode
     ~PushPopNode() { nodePath.pop_back(); }
 };
 
-Intersector::Intersector()
+Intersector::Intersector(ref_ptr<ArrayState> initialArrayData)
 {
     arrayStateStack.reserve(4);
-    arrayStateStack.emplace_back(ArrayState());
+    arrayStateStack.emplace_back(initialArrayData ? initialArrayData : ArrayState::create());
 }
 
 void Intersector::apply(const Node& node)
@@ -53,11 +53,11 @@ void Intersector::apply(const StateGroup& stategroup)
 {
     PushPopNode ppn(_nodePath, &stategroup);
 
-    ArrayState arrayState(arrayStateStack.back());
+    auto arrayState = stategroup.prototypeArrayState ? stategroup.prototypeArrayState->clone(arrayStateStack.back()) : arrayStateStack.back()->clone();
 
     for (auto& statecommand : stategroup.stateCommands)
     {
-        statecommand->accept(arrayState);
+        statecommand->accept(*arrayState);
     }
 
     arrayStateStack.emplace_back(arrayState);
@@ -67,11 +67,11 @@ void Intersector::apply(const StateGroup& stategroup)
     arrayStateStack.pop_back();
 }
 
-void Intersector::apply(const MatrixTransform& transform)
+void Intersector::apply(const Transform& transform)
 {
     PushPopNode ppn(_nodePath, &transform);
 
-    pushTransform(transform.matrix);
+    pushTransform(transform);
 
     transform.traverse(*this);
 
@@ -121,7 +121,7 @@ void Intersector::apply(const CullNode& cn)
 
 void Intersector::apply(const VertexIndexDraw& vid)
 {
-    auto& arrayState = arrayStateStack.back();
+    auto& arrayState = *arrayStateStack.back();
     arrayState.apply(vid);
     if (!arrayState.vertices) return;
 
@@ -129,7 +129,7 @@ void Intersector::apply(const VertexIndexDraw& vid)
 
     PushPopNode ppn(_nodePath, &vid);
 
-    sphere bound;
+    dsphere bound;
     if (!vid.getValue("bound", bound))
     {
         box bb;
@@ -159,7 +159,7 @@ void Intersector::apply(const VertexIndexDraw& vid)
 
 void Intersector::apply(const Geometry& geometry)
 {
-    auto& arrayState = arrayStateStack.back();
+    auto& arrayState = *arrayStateStack.back();
     arrayState.apply(geometry);
     if (!arrayState.vertices) return;
 
@@ -175,7 +175,7 @@ void Intersector::apply(const Geometry& geometry)
 
 void Intersector::apply(const BindVertexBuffers& bvb)
 {
-    arrayStateStack.back().apply(bvb);
+    arrayStateStack.back()->apply(bvb);
 }
 
 void Intersector::apply(const BindIndexBuffer& bib)
@@ -183,13 +183,18 @@ void Intersector::apply(const BindIndexBuffer& bib)
     bib.indices->accept(*this);
 }
 
-void Intersector::apply(const vsg::ushortArray& array)
+void Intersector::apply(const BufferInfo& bufferInfo)
+{
+    if (bufferInfo.data) bufferInfo.data->accept(*this);
+}
+
+void Intersector::apply(const ushortArray& array)
 {
     ushort_indices = &array;
     uint_indices = nullptr;
 }
 
-void Intersector::apply(const vsg::uintArray& array)
+void Intersector::apply(const uintArray& array)
 {
     ushort_indices = nullptr;
     uint_indices = &array;

@@ -34,6 +34,9 @@ namespace vsg
             ptr = buffer;
         }
 
+        ScratchMemory(const ScratchMemory&) = delete;
+        ScratchMemory& operator=(const ScratchMemory&) = delete;
+
         ~ScratchMemory()
         {
             delete[] buffer;
@@ -63,7 +66,7 @@ namespace vsg
                 return allocated_ptr;
             }
 
-            if (!next) next = new ScratchMemory(std::max(size, allocate_size));
+            if (!next) next = ScratchMemory::create(std::max(size, allocate_size));
 
             return next->allocate<T>(num);
         }

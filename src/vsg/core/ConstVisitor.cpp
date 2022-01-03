@@ -453,9 +453,13 @@ void ConstVisitor::apply(const CullNode& value)
 {
     apply(static_cast<const Node&>(value));
 }
-void ConstVisitor::apply(const MatrixTransform& value)
+void ConstVisitor::apply(const Transform& value)
 {
     apply(static_cast<const Group&>(value));
+}
+void ConstVisitor::apply(const MatrixTransform& value)
+{
+    apply(static_cast<const Transform&>(value));
 }
 void ConstVisitor::apply(const Geometry& value)
 {
@@ -477,15 +481,15 @@ void ConstVisitor::apply(const Switch& value)
 {
     apply(static_cast<const Node&>(value));
 }
-void ConstVisitor::apply(const MaskGroup& value)
-{
-    apply(static_cast<const Node&>(value));
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Vulkan Object
 //
+void ConstVisitor::apply(const BufferInfo& value)
+{
+    apply(static_cast<const Object&>(value));
+}
 void ConstVisitor::apply(const Command& value)
 {
     apply(static_cast<const Node&>(value));
@@ -493,6 +497,10 @@ void ConstVisitor::apply(const Command& value)
 void ConstVisitor::apply(const StateCommand& value)
 {
     apply(static_cast<const Command&>(value));
+}
+void ConstVisitor::apply(const StateSwitch& value)
+{
+    apply(static_cast<const StateCommand&>(value));
 }
 void ConstVisitor::apply(const CommandBuffer& value)
 {
@@ -715,6 +723,15 @@ void ConstVisitor::apply(const TerminateEvent& event)
 void ConstVisitor::apply(const FrameEvent& event)
 {
     apply(static_cast<const UIEvent&>(event));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// util classes
+//
+void ConstVisitor::apply(const AnimationPath& animationPath)
+{
+    apply(static_cast<const Object&>(animationPath));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

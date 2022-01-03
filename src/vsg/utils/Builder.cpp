@@ -1,4 +1,19 @@
 
+#include <vsg/io/read.h>
+#include <vsg/nodes/StateGroup.h>
+#include <vsg/nodes/VertexIndexDraw.h>
+#include <vsg/state/ColorBlendState.h>
+#include <vsg/state/DepthStencilState.h>
+#include <vsg/state/DescriptorBuffer.h>
+#include <vsg/state/DescriptorImage.h>
+#include <vsg/state/DescriptorSet.h>
+#include <vsg/state/GraphicsPipeline.h>
+#include <vsg/state/InputAssemblyState.h>
+#include <vsg/state/MultisampleState.h>
+#include <vsg/state/RasterizationState.h>
+#include <vsg/state/VertexInputState.h>
+#include <vsg/state/ViewportState.h>
+#include <vsg/state/material.h>
 #include <vsg/utils/Builder.h>
 
 #include "shaders/assimp_flat_shaded_frag.cpp"
@@ -6,11 +21,13 @@
 #include "shaders/assimp_phong_frag.cpp"
 #include "shaders/assimp_vert.cpp"
 
+#include <iostream>
+
 using namespace vsg;
 
 #define FLOAT_COLORS 1
 
-void Builder::setup(ref_ptr<Window> window, ViewportState* viewport, uint32_t maxNumTextures)
+void Builder::setup(ref_ptr<Window> window, ref_ptr<ViewportState> viewport, uint32_t maxNumTextures)
 {
     auto device = window->getOrCreateDevice();
 
@@ -34,28 +51,40 @@ ref_ptr<BindDescriptorSets> Builder::_createDescriptorSet(const StateInfo& state
     StateSettings& stateSettings = _getStateSettings(stateInfo);
 
     auto textureData = stateInfo.image;
+    auto displacementMap = stateInfo.displacementMap;
 
-    auto& bindDescriptorSets = stateSettings.textureDescriptorSets[textureData];
+    auto& bindDescriptorSets = stateSettings.textureDescriptorSets[DescriptorKey{textureData, displacementMap}];
     if (bindDescriptorSets) return bindDescriptorSets;
 
     // create texture image and associated DescriptorSets and binding
     auto mat = vsg::PhongMaterialValue::create();
     auto material = vsg::DescriptorBuffer::create(mat, 10);
 
+    Descriptors descriptors;
     if (textureData)
     {
-        // create texture image and associated DescriptorSets and binding
         auto sampler = Sampler::create();
-        auto texture = DescriptorImage::create(sampler, textureData, 0, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        sampler->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sampler->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 
-        auto descriptorSet = DescriptorSet::create(stateSettings.descriptorSetLayout, Descriptors{texture, material});
-        bindDescriptorSets = BindDescriptorSets::create(VK_PIPELINE_BIND_POINT_GRAPHICS, stateSettings.pipelineLayout, 0, DescriptorSets{descriptorSet});
+        auto texture = DescriptorImage::create(sampler, textureData, 0, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        descriptors.push_back(texture);
     }
-    else
+
+    if (displacementMap)
     {
-        auto descriptorSet = DescriptorSet::create(stateSettings.descriptorSetLayout, Descriptors{material});
-        bindDescriptorSets = BindDescriptorSets::create(VK_PIPELINE_BIND_POINT_GRAPHICS, stateSettings.pipelineLayout, 0, DescriptorSets{descriptorSet});
+        auto sampler = Sampler::create();
+        sampler->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sampler->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+
+        auto texture = DescriptorImage::create(sampler, displacementMap, 6, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        descriptors.push_back(texture);
     }
+
+    descriptors.push_back(material);
+
+    auto descriptorSet = DescriptorSet::create(stateSettings.descriptorSetLayout, descriptors);
+    bindDescriptorSets = BindDescriptorSets::create(VK_PIPELINE_BIND_POINT_GRAPHICS, stateSettings.pipelineLayout, 0, DescriptorSets{descriptorSet});
 
     return bindDescriptorSets;
 }
@@ -96,7 +125,6 @@ Builder::StateSettings& Builder::_getStateSettings(const StateInfo& stateInfo)
     fragmentShader->module->hints = shaderHints;
     fragmentShader->module->code = {};
 
-    if (stateInfo.image) defines.push_back("VSG_DIFFUSE_MAP");
     if (stateInfo.instancce_positions_vec3) defines.push_back("VSG_INSTANCE_POSITIONS");
 
     // set up graphics pipeline
@@ -105,6 +133,16 @@ Builder::StateSettings& Builder::_getStateSettings(const StateInfo& stateInfo)
     {
         // { binding, descriptorTpe, descriptorCount, stageFlags, pImmutableSamplers}
         descriptorBindings.push_back(VkDescriptorSetLayoutBinding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr});
+        defines.push_back("VSG_DIFFUSE_MAP");
+
+        if (stateInfo.greyscale) defines.push_back("VSG_GREYSACLE_DIFFUSE_MAP");
+    }
+
+    if (stateInfo.displacementMap)
+    {
+        // { binding, descriptorTpe, descriptorCount, stageFlags, pImmutableSamplers}
+        descriptorBindings.push_back(VkDescriptorSetLayoutBinding{6, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr});
+        defines.push_back("VSG_DISPLACEMENT_MAP");
     }
 
     {
@@ -116,7 +154,7 @@ Builder::StateSettings& Builder::_getStateSettings(const StateInfo& stateInfo)
     DescriptorSetLayouts descriptorSetLayouts{stateSettings.descriptorSetLayout};
 
     PushConstantRanges pushConstantRanges{
-        {VK_SHADER_STAGE_VERTEX_BIT, 0, 128} // projection view, and model matrices, actual push constant calls autoaatically provided by the VSG's DispatchTraversal
+        {VK_SHADER_STAGE_VERTEX_BIT, 0, 128} // projection view, and model matrices, actual push constant calls automatically provided by the VSG's DispatchTraversal
     };
 
     stateSettings.pipelineLayout = PipelineLayout::create(descriptorSetLayouts, pushConstantRanges);
@@ -186,9 +224,16 @@ Builder::StateSettings& Builder::_getStateSettings(const StateInfo& stateInfo)
 
 void Builder::_assign(StateGroup& stateGroup, const StateInfo& stateInfo)
 {
-    auto& stateSettings = _getStateSettings(stateInfo);
+    const auto& stateSettings = _getStateSettings(stateInfo);
     stateGroup.add(stateSettings.bindGraphicsPipeline);
     stateGroup.add(_createDescriptorSet(stateInfo));
+}
+
+ref_ptr<StateGroup> Builder::createStateGroup(const StateInfo& stateInfo)
+{
+    auto stategroup = vsg::StateGroup::create();
+    _assign(*stategroup, stateInfo);
+    return stategroup;
 }
 
 void Builder::compile(ref_ptr<Node> subgraph)
@@ -223,7 +268,9 @@ void Builder::transform(const mat4& matrix, ref_ptr<vec3Array> vertices, ref_ptr
 
 vec3 Builder::y_texcoord(const StateInfo& info) const
 {
-    if (info.image && info.image->getLayout().origin == Origin::TOP_LEFT)
+
+    if ((info.image && info.image->getLayout().origin == Origin::TOP_LEFT) ||
+        (info.displacementMap && info.displacementMap->getLayout().origin == Origin::TOP_LEFT))
     {
         return {1.0f, -1.0f, 0.0f};
     }
@@ -246,7 +293,7 @@ ref_ptr<Node> Builder::createBox(const GeometryInfo& info, const StateInfo& stat
     if (positions)
     {
         if (positions->size() >= 1)
-            instanceCount = positions->size();
+            instanceCount = static_cast<uint32_t>(positions->size());
         else
             positions = {};
     }
@@ -373,7 +420,7 @@ ref_ptr<Node> Builder::createBox(const GeometryInfo& info, const StateInfo& stat
     vid->assignArrays(arrays);
 
     vid->assignIndices(indices);
-    vid->indexCount = indices->size();
+    vid->indexCount = static_cast<uint32_t>(indices->size());
     vid->instanceCount = instanceCount;
 
     scenegraph->addChild(vid);
@@ -397,7 +444,7 @@ ref_ptr<Node> Builder::createCapsule(const GeometryInfo& info, const StateInfo& 
     if (positions)
     {
         if (positions->size() >= 1)
-            instanceCount = positions->size();
+            instanceCount = static_cast<uint32_t>(positions->size());
         else
             positions = {};
     }
@@ -458,7 +505,7 @@ ref_ptr<Node> Builder::createCapsule(const GeometryInfo& info, const StateInfo& 
     {
         unsigned int vi = c * 2;
         float r = float(c) / float(num_columns - 1);
-        float alpha = (r)*2.0 * PI;
+        float alpha = (r)*2.0f * PIf;
         v = dx * (-sinf(alpha)) + dy * (cosf(alpha));
         n = normalize(v);
 
@@ -494,7 +541,7 @@ ref_ptr<Node> Builder::createCapsule(const GeometryInfo& info, const StateInfo& 
         {
             for (unsigned int r = 0; r < num_rows; ++r)
             {
-                float beta = ((float(r) / float(num_rows - 1)) - 1.0f) * PI * 0.5f;
+                float beta = ((float(r) / float(num_rows - 1)) - 1.0f) * PIf * 0.5f;
                 float ty = t_origin + t_scale * float(r) / float(num_rows - 1);
                 float cos_beta = cosf(beta);
                 vec3 dz_sin_beta = dz * sinf(beta);
@@ -515,7 +562,7 @@ ref_ptr<Node> Builder::createCapsule(const GeometryInfo& info, const StateInfo& 
                 for (unsigned int c = 1; c < num_columns - 1; ++c)
                 {
                     unsigned int vi = left_i + c;
-                    float alpha = (float(c) / float(num_columns - 1)) * 2.0 * PI;
+                    float alpha = (float(c) / float(num_columns - 1)) * 2.0f * PIf;
                     v = dx * (-sinf(alpha) * cos_beta) + dy * (cosf(alpha) * cos_beta) + dz_sin_beta;
                     n = normalize(v);
                     vertices->set(vi, bottom + v);
@@ -548,7 +595,7 @@ ref_ptr<Node> Builder::createCapsule(const GeometryInfo& info, const StateInfo& 
         {
             for (unsigned int r = 0; r < num_rows; ++r)
             {
-                float beta = ((float(r) / float(num_rows - 1))) * PI * 0.5f;
+                float beta = ((float(r) / float(num_rows - 1))) * PIf * 0.5f;
                 float ty = t_origin + t_scale * float(r) / float(num_rows - 1);
                 float cos_beta = cosf(beta);
                 vec3 dz_sin_beta = dz * sinf(beta);
@@ -569,7 +616,7 @@ ref_ptr<Node> Builder::createCapsule(const GeometryInfo& info, const StateInfo& 
                 for (unsigned int c = 1; c < num_columns - 1; ++c)
                 {
                     unsigned int vi = left_i + c;
-                    float alpha = (float(c) / float(num_columns - 1)) * 2.0 * PI;
+                    float alpha = (float(c) / float(num_columns - 1)) * 2.0f * PIf;
                     v = dx * (-sinf(alpha) * cos_beta) + dy * (cosf(alpha) * cos_beta) + dz_sin_beta;
                     n = normalize(v);
                     vertices->set(vi, top + v);
@@ -594,8 +641,6 @@ ref_ptr<Node> Builder::createCapsule(const GeometryInfo& info, const StateInfo& 
                     indices->set(i++, upper + 1);
                 }
             }
-
-            base_vi += num_columns * num_rows;
         }
     }
 
@@ -616,7 +661,7 @@ ref_ptr<Node> Builder::createCapsule(const GeometryInfo& info, const StateInfo& 
     vid->assignArrays(arrays);
 
     vid->assignIndices(indices);
-    vid->indexCount = indices->size();
+    vid->indexCount = static_cast<uint32_t>(indices->size());
     vid->instanceCount = instanceCount;
 
     scenegraph->addChild(vid);
@@ -640,7 +685,7 @@ ref_ptr<Node> Builder::createCone(const GeometryInfo& info, const StateInfo& sta
     if (positions)
     {
         if (positions->size() >= 1)
-            instanceCount = positions->size();
+            instanceCount = static_cast<uint32_t>(positions->size());
         else
             positions = {};
     }
@@ -661,8 +706,6 @@ ref_ptr<Node> Builder::createCone(const GeometryInfo& info, const StateInfo& sta
 
     auto bottom = info.position - dz;
     auto top = info.position + dz;
-
-    bool withEnds = true;
 
     ref_ptr<vec3Array> vertices;
     ref_ptr<vec3Array> normals;
@@ -705,7 +748,7 @@ ref_ptr<Node> Builder::createCone(const GeometryInfo& info, const StateInfo& sta
         {
             unsigned int vi = 1 + c;
             float r = float(c) / float(num_columns);
-            alpha = (r)*2.0 * PI;
+            alpha = (r)*2.0f * PIf;
             v = edge(alpha);
             n = normal(alpha);
 
@@ -730,6 +773,8 @@ ref_ptr<Node> Builder::createCone(const GeometryInfo& info, const StateInfo& sta
     }
     else
     {
+        bool withEnds = true;
+
         unsigned int num_columns = 20;
         unsigned int num_vertices = num_columns * 2;
         unsigned int num_indices = (num_columns - 1) * 3;
@@ -763,7 +808,7 @@ ref_ptr<Node> Builder::createCone(const GeometryInfo& info, const StateInfo& sta
         {
             unsigned int vi = c * 2;
             float r = float(c) / float(num_columns - 1);
-            alpha = (r)*2.0 * PI;
+            alpha = (r)*2.0f * PIf;
             v = edge(alpha);
             n = normal(alpha);
 
@@ -803,7 +848,7 @@ ref_ptr<Node> Builder::createCone(const GeometryInfo& info, const StateInfo& sta
             for (unsigned int c = 1; c < num_columns - 1; ++c)
             {
                 float r = float(c) / float(num_columns - 1);
-                alpha = (r)*2.0 * PI;
+                alpha = (r)*2.0f * PIf;
                 v = edge(alpha);
 
                 unsigned int vi = bottom_i + c;
@@ -838,7 +883,7 @@ ref_ptr<Node> Builder::createCone(const GeometryInfo& info, const StateInfo& sta
     vid->assignArrays(arrays);
 
     vid->assignIndices(indices);
-    vid->indexCount = indices->size();
+    vid->indexCount = static_cast<uint32_t>(indices->size());
     vid->instanceCount = instanceCount;
 
     scenegraph->addChild(vid);
@@ -862,7 +907,7 @@ ref_ptr<Node> Builder::createCylinder(const GeometryInfo& info, const StateInfo&
     if (positions)
     {
         if (positions->size() >= 1)
-            instanceCount = positions->size();
+            instanceCount = static_cast<uint32_t>(positions->size());
         else
             positions = {};
     }
@@ -915,7 +960,7 @@ ref_ptr<Node> Builder::createCylinder(const GeometryInfo& info, const StateInfo&
         {
             unsigned int vi = c * 2;
             float r = float(c) / float(num_columns - 1);
-            float alpha = (r)*2.0 * PI;
+            float alpha = (r)*2.0f * PIf;
             v = dx * (-sinf(alpha)) + dy * (cosf(alpha));
             n = normalize(v);
 
@@ -995,7 +1040,7 @@ ref_ptr<Node> Builder::createCylinder(const GeometryInfo& info, const StateInfo&
         {
             unsigned int vi = c * 2;
             float r = float(c) / float(num_columns - 1);
-            float alpha = (r)*2.0 * PI;
+            float alpha = (r)*2.0f * PIf;
             v = dx * (-sinf(alpha)) + dy * (cosf(alpha));
             n = normalize(v);
 
@@ -1049,7 +1094,7 @@ ref_ptr<Node> Builder::createCylinder(const GeometryInfo& info, const StateInfo&
             for (unsigned int c = 1; c < num_columns - 1; ++c)
             {
                 float r = float(c) / float(num_columns - 1);
-                float alpha = (r)*2.0 * PI;
+                float alpha = (r)*2.0f * PIf;
                 v = dx * (-sinf(alpha)) + dy * (cosf(alpha));
                 n = normalize(v);
 
@@ -1097,7 +1142,7 @@ ref_ptr<Node> Builder::createCylinder(const GeometryInfo& info, const StateInfo&
     vid->assignArrays(arrays);
 
     vid->assignIndices(indices);
-    vid->indexCount = indices->size();
+    vid->indexCount = static_cast<uint32_t>(indices->size());
     vid->instanceCount = instanceCount;
 
     scenegraph->addChild(vid);
@@ -1121,7 +1166,7 @@ ref_ptr<Node> Builder::createDisk(const GeometryInfo& info, const StateInfo& sta
     if (positions)
     {
         if (positions->size() >= 1)
-            instanceCount = positions->size();
+            instanceCount = static_cast<uint32_t>(positions->size());
         else
             positions = {};
     }
@@ -1157,7 +1202,7 @@ ref_ptr<Node> Builder::createDisk(const GeometryInfo& info, const StateInfo& sta
     for (unsigned int c = 1; c < num_vertices; ++c)
     {
         float r = float(c) / float(num_vertices - 1);
-        float alpha = (r)*2.0 * PI;
+        float alpha = (r)*2.0f * PIf;
         float sn = sinf(alpha);
         float cs = cosf(alpha);
         vec3 v = dy * cs - dx * sn;
@@ -1212,7 +1257,7 @@ ref_ptr<Node> Builder::createDisk(const GeometryInfo& info, const StateInfo& sta
     vid->assignArrays(arrays);
 
     vid->assignIndices(indices);
-    vid->indexCount = indices->size();
+    vid->indexCount = static_cast<uint32_t>(indices->size());
     vid->instanceCount = instanceCount;
 
     scenegraph->addChild(vid);
@@ -1236,7 +1281,7 @@ ref_ptr<Node> Builder::createQuad(const GeometryInfo& info, const StateInfo& sta
     if (positions)
     {
         if (positions->size() >= 1)
-            instanceCount = positions->size();
+            instanceCount = static_cast<uint32_t>(positions->size());
         else
             positions = {};
     }
@@ -1304,7 +1349,7 @@ ref_ptr<Node> Builder::createQuad(const GeometryInfo& info, const StateInfo& sta
     vid->assignArrays(arrays);
 
     vid->assignIndices(indices);
-    vid->indexCount = indices->size();
+    vid->indexCount = static_cast<uint32_t>(indices->size());
     vid->instanceCount = instanceCount;
 
     scenegraph->addChild(vid);
@@ -1329,7 +1374,7 @@ ref_ptr<Node> Builder::createSphere(const GeometryInfo& info, const StateInfo& s
     if (positions)
     {
         if (positions->size() >= 1)
-            instanceCount = positions->size();
+            instanceCount = static_cast<uint32_t>(positions->size());
         else
             positions = {};
     }
@@ -1359,7 +1404,7 @@ ref_ptr<Node> Builder::createSphere(const GeometryInfo& info, const StateInfo& s
 
     for (unsigned int r = 0; r < num_rows; ++r)
     {
-        float beta = ((float(r) / float(num_rows - 1)) - 0.5) * PI;
+        float beta = ((float(r) / float(num_rows - 1)) - 0.5f) * PIf;
         float ty = t_origin + t_scale * float(r) / float(num_rows - 1);
         float cos_beta = cosf(beta);
         vec3 dz_sin_beta = dz * sinf(beta);
@@ -1380,7 +1425,7 @@ ref_ptr<Node> Builder::createSphere(const GeometryInfo& info, const StateInfo& s
         for (unsigned int c = 1; c < num_columns - 1; ++c)
         {
             unsigned int vi = left_i + c;
-            float alpha = (float(c) / float(num_columns - 1)) * 2.0 * PI;
+            float alpha = (float(c) / float(num_columns - 1)) * 2.0f * PIf;
             v = dx * (-sinf(alpha) * cos_beta) + dy * (cosf(alpha) * cos_beta) + dz_sin_beta;
             n = normalize(v);
             vertices->set(vi, origin + v);
@@ -1424,7 +1469,152 @@ ref_ptr<Node> Builder::createSphere(const GeometryInfo& info, const StateInfo& s
     vid->assignArrays(arrays);
 
     vid->assignIndices(indices);
-    vid->indexCount = indices->size();
+    vid->indexCount = static_cast<uint32_t>(indices->size());
+    vid->instanceCount = instanceCount;
+
+    scenegraph->addChild(vid);
+
+    compile(scenegraph);
+
+    subgraph = scenegraph;
+    return subgraph;
+}
+
+ref_ptr<Node> Builder::createHeightField(const GeometryInfo& info, const StateInfo& stateInfo)
+{
+    auto& subgraph = _heightfields[info];
+    if (subgraph)
+    {
+        return subgraph;
+    }
+
+    auto [t_origin, t_scale, t_top] = y_texcoord(stateInfo).value;
+
+    uint32_t instanceCount = 1;
+    auto positions = info.positions;
+    if (positions)
+    {
+        if (positions->size() >= 1)
+            instanceCount = static_cast<uint32_t>(positions->size());
+        else
+            positions = {};
+    }
+
+    auto colors = info.colors;
+    if (colors && colors->valueCount() != instanceCount) colors = {};
+    if (!colors) colors = vec4Array::create(instanceCount, info.color);
+
+    // create StateGroup as the root of the scene/command graph to hold the GraphicsProgram, and binding of Descriptors to decorate the whole graph
+    auto scenegraph = StateGroup::create();
+    _assign(*scenegraph, stateInfo);
+
+    auto dx = info.dx;
+    auto dy = info.dy;
+    auto dz = info.dz;
+    auto origin = info.position - (dx + dy) * 0.5f;
+
+    unsigned int num_columns = 2;
+    unsigned int num_rows = 2;
+
+    if (stateInfo.displacementMap)
+    {
+        num_columns = stateInfo.displacementMap->width();
+        num_rows = stateInfo.displacementMap->height();
+
+        if (num_columns < 2) num_columns = 2;
+        if (num_rows < 2) num_rows = 2;
+    }
+
+    unsigned int num_vertices = num_columns * num_rows;
+    unsigned int num_indices = (stateInfo.wireframe) ? (4 * num_columns * num_rows - 2 * (num_columns + num_rows)) : (num_rows - 1) * (num_rows - 1) * 6;
+
+    auto normal = normalize(dz);
+
+    auto vertices = vec3Array::create(num_vertices);
+    auto normals = vec3Array::create(num_vertices);
+    auto texcoords = vec2Array::create(num_vertices);
+    auto indices = ushortArray::create(num_indices);
+
+    for (unsigned int r = 0; r < num_rows; ++r)
+    {
+        //float ty = t_origin + t_scale * float(r) / float(num_rows - 1);
+        float ty = float(r) / float(num_rows - 1);
+        unsigned int left_i = r * num_columns;
+
+        for (unsigned int c = 0; c < num_columns; ++c)
+        {
+            unsigned int vi = left_i + c;
+            float tx = float(c) / float(num_columns - 1);
+            ;
+            vertices->set(vi, origin + dx * tx + dy * ty);
+            normals->set(vi, normal);
+            texcoords->set(vi, vec2(float(c) / float(num_columns - 1), t_origin + t_scale * ty));
+        }
+    }
+
+    if (stateInfo.wireframe)
+    {
+        unsigned int i = 0;
+        for (unsigned int r = 0; r < num_rows; ++r)
+        {
+            for (unsigned int c = 0; c < num_columns - 1; ++c)
+            {
+                unsigned vi = num_columns * r + c;
+
+                indices->set(i++, vi);
+                indices->set(i++, vi + 1);
+            }
+        }
+
+        for (unsigned int c = 0; c < num_columns; ++c)
+        {
+            for (unsigned int r = 0; r < num_rows - 1; ++r)
+            {
+                unsigned vi = num_columns * r + c;
+                indices->set(i++, vi);
+                indices->set(i++, vi + num_columns);
+            }
+        }
+    }
+    else
+    {
+        unsigned int i = 0;
+        for (unsigned int r = 0; r < num_rows - 1; ++r)
+        {
+            for (unsigned int c = 0; c < num_columns - 1; ++c)
+            {
+                unsigned lower = num_columns * r + c;
+                unsigned upper = lower + num_columns;
+
+                indices->set(i++, lower);
+                indices->set(i++, lower + 1);
+                indices->set(i++, upper);
+
+                indices->set(i++, upper);
+                indices->set(i++, lower + 1);
+                indices->set(i++, upper + 1);
+            }
+        }
+    }
+
+    if (info.transform != identity)
+    {
+        transform(info.transform, vertices, normals);
+    }
+
+    // setup geometry
+    auto vid = VertexIndexDraw::create();
+
+    DataList arrays;
+    arrays.push_back(vertices);
+    if (normals) arrays.push_back(normals);
+    if (texcoords) arrays.push_back(texcoords);
+    if (colors) arrays.push_back(colors);
+    if (positions) arrays.push_back(positions);
+    vid->assignArrays(arrays);
+
+    vid->assignIndices(indices);
+    vid->indexCount = static_cast<uint32_t>(indices->size());
     vid->instanceCount = instanceCount;
 
     scenegraph->addChild(vid);

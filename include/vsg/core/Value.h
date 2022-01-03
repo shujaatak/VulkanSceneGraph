@@ -15,8 +15,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/Data.h>
 #include <vsg/core/type_name.h>
 
+#include <vsg/maths/box.h>
 #include <vsg/maths/mat3.h>
 #include <vsg/maths/mat4.h>
+#include <vsg/maths/quat.h>
+#include <vsg/maths/sphere.h>
 #include <vsg/maths/vec2.h>
 #include <vsg/maths/vec3.h>
 #include <vsg/maths/vec4.h>
@@ -37,15 +40,16 @@ namespace vsg
     public:
         using value_type = T;
 
-        Value() {}
+        Value() :
+            _value{} { dirty(); }
         Value(const Value& rhs) :
-            _value(rhs._value) {}
+            _value(rhs._value) { dirty(); }
         explicit Value(const value_type& in_value) :
-            _value(in_value) {}
+            _value(in_value) { dirty(); }
 
         template<typename... Args>
         explicit Value(Args... args) :
-            _value(args...) {}
+            _value(args...) { dirty(); }
 
         template<typename... Args>
         static ref_ptr<Value> create(Args... args)
@@ -66,6 +70,7 @@ namespace vsg
         {
             Data::read(input);
             input.read("Value", _value);
+            dirty();
         }
 
         void write(Output& output) const override
@@ -143,6 +148,17 @@ namespace vsg
         }
     }
 
+    /// convience function for getting a value from the first object with the named value, falling back to specififed defaultValue when none is available.
+    /// usage:   auto flag = vsg::value<bool>(false, "flag", object1);
+    /// usage:   auto angle = vsg::value<float>(0.0f, "angle", object1, object2);
+    template<typename T, typename... Args>
+    T value(T defaultValue, const std::string& match, Args&&... args)
+    {
+        T v{defaultValue};
+        ((args && args->getValue(match, v)) || ...);
+        return v;
+    }
+
     VSG_value(stringValue, std::string);
     VSG_value(boolValue, bool);
     VSG_value(intValue, int);
@@ -175,5 +191,14 @@ namespace vsg
 
     VSG_value(mat4Value, mat4);
     VSG_value(dmat4Value, dmat4);
+
+    VSG_value(quatValue, quat);
+    VSG_value(dquatValue, dquat);
+
+    VSG_value(sphereValue, sphere);
+    VSG_value(dsphereValue, dsphere);
+
+    VSG_value(boxValue, box);
+    VSG_value(dboxValue, dbox);
 
 } // namespace vsg

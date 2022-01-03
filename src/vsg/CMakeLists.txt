@@ -22,7 +22,7 @@ set(SOURCES
 
     introspection/c_interface.cpp
 
-    maths/transform.cpp
+    maths/maths_transform.cpp
 
     nodes/Group.cpp
     nodes/Geometry.cpp
@@ -33,11 +33,11 @@ set(SOURCES
     nodes/LOD.cpp
     nodes/PagedLOD.cpp
     nodes/MatrixTransform.cpp
+    nodes/Transform.cpp
     nodes/VertexIndexDraw.cpp
     nodes/DepthSorted.cpp
     nodes/Bin.cpp
     nodes/Switch.cpp
-    nodes/MaskGroup.cpp
     nodes/StateGroup.cpp
 
     commands/BindIndexBuffer.cpp
@@ -58,6 +58,10 @@ set(SOURCES
     commands/DrawIndirect.cpp
     commands/DrawIndexed.cpp
     commands/DrawIndexedIndirect.cpp
+    commands/SetDepthBias.cpp
+    commands/SetLineWidth.cpp
+    commands/SetScissor.cpp
+    commands/SetViewport.cpp
 
     state/Buffer.cpp
     state/BufferInfo.cpp
@@ -76,6 +80,7 @@ set(SOURCES
     state/Sampler.cpp
     state/ResourceHints.cpp
     state/StateCommand.cpp
+    state/StateSwitch.cpp
     state/Image.cpp
     state/ImageInfo.cpp
     state/ImageView.cpp
@@ -102,6 +107,7 @@ set(SOURCES
     io/ObjectFactory.cpp
     io/ReaderWriter.cpp
     io/VSG.cpp
+    io/spirv.cpp
     io/read.cpp
     io/write.cpp
 
@@ -127,6 +133,7 @@ set(SOURCES
     viewer/EllipsoidModel.cpp
     viewer/Viewer.cpp
     viewer/Window.cpp
+    viewer/WindowAdapter.cpp
     viewer/Trackball.cpp
     viewer/CopyImageViewToWindow.cpp
     viewer/ExecuteCommands.cpp
@@ -183,7 +190,9 @@ set(SOURCES
     vk/Semaphore.cpp
     vk/Surface.cpp
     vk/Swapchain.cpp
+    vk/ResourceRequirements.cpp
 
+    utils/AnimationPath.cpp
     utils/CommandLine.cpp
     utils/Builder.cpp
 )
@@ -256,6 +265,7 @@ endif()
 
 
 add_library(vsg ${HEADERS} ${SOURCES})
+set_target_properties(vsg PROPERTIES FOLDER "VulkanSceneGraph")
 
 if(MSVC)
     # ensure the libraries are all built in the lib directory
@@ -322,7 +332,7 @@ set_property(TARGET vsg PROPERTY POSITION_INDEPENDENT_CODE ON)
 set_property(TARGET vsg PROPERTY CXX_STANDARD 17)
 
 target_compile_definitions(vsg PRIVATE ${EXTRA_DEFINES})
-target_include_directories(vsg PUBLIC $<BUILD_INTERFACE:${VSG_SOURCE_DIR}/include> $<BUILD_INTERFACE:${VSG_BINARY_DIR}/include>)
+target_include_directories(vsg PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include> $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>)
 
 
 target_link_libraries(vsg ${LIBRARIES})
@@ -343,18 +353,6 @@ if (glslang_FOUND)
     set(FIND_DEPENDENCY_GLSLANG "find_dependency(vsg_glslang)")
 endif()
 
-configure_file("${CMAKE_SOURCE_DIR}/src/vsg/vsgConfig.cmake.in" "${CMAKE_BINARY_DIR}/src/vsg/vsgConfig.cmake" @ONLY)
-
-# [==[
-install(EXPORT vsgTargets
-    FILE vsgTargets.cmake
-    NAMESPACE vsg::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vsg
+vsg_add_cmake_support_files(
+    CONFIG_TEMPLATE vsgConfig.cmake.in
 )
-
-include(CMakePackageConfigHelpers)
-write_basic_package_version_file("${CMAKE_BINARY_DIR}/src/vsg/vsgConfigVersion.cmake" COMPATIBILITY SameMajorVersion)
-
-install(FILES "${CMAKE_BINARY_DIR}/src/vsg/vsgConfig.cmake" "${CMAKE_BINARY_DIR}/src/vsg/vsgConfigVersion.cmake" DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vsg)
-
-# ]==]

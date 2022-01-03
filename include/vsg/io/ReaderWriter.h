@@ -19,6 +19,22 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    struct ReadError : public Inherit<Object, ReadError>
+    {
+        explicit ReadError(const std::string& msg) :
+            message(msg) {}
+
+        std::string message;
+    };
+
+    struct WriteError : public Inherit<Object, WriteError>
+    {
+        explicit WriteError(const std::string& msg) :
+            message(msg) {}
+
+        std::string message;
+    };
+
     class VSG_DECLSPEC ReaderWriter : public Inherit<Object, ReaderWriter>
     {
     public:
@@ -66,6 +82,7 @@ namespace vsg
         {
             std::map<std::string, FeatureMask> protocolFeatureMap;
             std::map<std::string, FeatureMask> extensionFeatureMap;
+            std::map<std::string, std::string> optionNameTypeMap;
         };
 
         /// get the Features supported by this ReaderWriter

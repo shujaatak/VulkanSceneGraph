@@ -11,6 +11,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/io/Options.h>
+#include <vsg/nodes/Transform.h>
 #include <vsg/traversals/LineSegmentIntersector.h>
 
 using namespace vsg;
@@ -36,11 +37,11 @@ struct TriangleIntersector
     ref_ptr<const vec3Array> vertices;
 
     TriangleIntersector(LineSegmentIntersector& in_intersector, const dvec3& in_start, const dvec3& in_end, ref_ptr<const vec3Array> in_vertices) :
+        start(in_start),
+        end(in_end),
         intersector(in_intersector),
         vertices(in_vertices)
     {
-        start = in_start;
-        end = in_end;
 
         _d = end - start;
         _length = length(_d);
@@ -130,12 +131,14 @@ struct TriangleIntersector
     }
 };
 
-LineSegmentIntersector::LineSegmentIntersector(const dvec3& s, const dvec3& e)
+LineSegmentIntersector::LineSegmentIntersector(const dvec3& s, const dvec3& e, ref_ptr<ArrayState> initialArrayData) :
+    Inherit(initialArrayData)
 {
     _lineSegmentStack.push_back(LineSegment{s, e});
 }
 
-LineSegmentIntersector::LineSegmentIntersector(const Camera& camera, int32_t x, int32_t y)
+LineSegmentIntersector::LineSegmentIntersector(const Camera& camera, int32_t x, int32_t y, ref_ptr<ArrayState> initialArrayData) :
+    Inherit(initialArrayData)
 {
     auto viewport = camera.getViewport();
 
@@ -148,12 +151,8 @@ LineSegmentIntersector::LineSegmentIntersector(const Camera& camera, int32_t x, 
     vsg::dvec3 ndc_near(ndc.x * 2.0 - 1.0, ndc.y * 2.0 - 1.0, viewport.minDepth * 2.0 - 1.0);
     vsg::dvec3 ndc_far(ndc.x * 2.0 - 1.0, ndc.y * 2.0 - 1.0, viewport.maxDepth * 2.0 - 1.0);
 
-    vsg::dmat4 projectionMatrix;
-    camera.projectionMatrix->get(projectionMatrix);
-
-    vsg::dmat4 viewMatrix;
-    camera.viewMatrix->get(viewMatrix);
-
+    auto projectionMatrix = camera.projectionMatrix->transform();
+    auto viewMatrix = camera.viewMatrix->transform();
     auto inv_projectionViewMatrix = vsg::inverse(projectionMatrix * viewMatrix);
 
     vsg::dvec3 world_near = inv_projectionViewMatrix * ndc_near;
@@ -166,23 +165,23 @@ void LineSegmentIntersector::add(const dvec3& intersection, double ratio, const 
 {
     if (_matrixStack.empty())
     {
-        intersections.emplace_back(Intersection{intersection, intersection, ratio, {}, _nodePath, arrayStateStack.back().arrays, indexRatios});
+        intersections.emplace_back(Intersection{intersection, intersection, ratio, {}, _nodePath, arrayStateStack.back()->arrays, indexRatios});
     }
     else
     {
         auto& localToWorld = _matrixStack.back();
-        intersections.emplace_back(Intersection{intersection, localToWorld * intersection, ratio, localToWorld, _nodePath, arrayStateStack.back().arrays, indexRatios});
+        intersections.emplace_back(Intersection{intersection, localToWorld * intersection, ratio, localToWorld, _nodePath, arrayStateStack.back()->arrays, indexRatios});
     }
 }
 
-void LineSegmentIntersector::pushTransform(const dmat4& m)
+void LineSegmentIntersector::pushTransform(const Transform& transform)
 {
-    dmat4 localToWorld = _matrixStack.empty() ? m : (_matrixStack.back() * m);
+    dmat4 localToWorld = _matrixStack.empty() ? transform.transform(dmat4{}) : transform.transform(_matrixStack.back());
     dmat4 worldToLocal = inverse(localToWorld);
 
     _matrixStack.push_back(localToWorld);
 
-    auto& worldLineSegment = _lineSegmentStack.front();
+    const auto& worldLineSegment = _lineSegmentStack.front();
     _lineSegmentStack.push_back(LineSegment{worldToLocal * worldLineSegment.start, worldToLocal * worldLineSegment.end});
 }
 
@@ -228,10 +227,10 @@ bool LineSegmentIntersector::intersects(const dsphere& bs)
 
 bool LineSegmentIntersector::intersectDraw(uint32_t firstVertex, uint32_t vertexCount)
 {
-    auto& arrayState = arrayStateStack.back();
+    const auto& arrayState = *arrayStateStack.back();
     if (!arrayState.vertices || arrayState.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST || vertexCount == 0) return false;
 
-    auto& ls = _lineSegmentStack.back();
+    const auto& ls = _lineSegmentStack.back();
 
     TriangleIntersector<double> triIntsector(*this, ls.start, ls.end, arrayState.vertices);
     if (!triIntsector.vertices) return false;
@@ -249,10 +248,10 @@ bool LineSegmentIntersector::intersectDraw(uint32_t firstVertex, uint32_t vertex
 
 bool LineSegmentIntersector::intersectDrawIndexed(uint32_t firstIndex, uint32_t indexCount)
 {
-    auto& arrayState = arrayStateStack.back();
+    const auto& arrayState = *arrayStateStack.back();
     if (!arrayState.vertices || arrayState.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST || indexCount == 0) return false;
 
-    auto& ls = _lineSegmentStack.back();
+    const auto& ls = _lineSegmentStack.back();
 
     TriangleIntersector<double> triIntsector(*this, ls.start, ls.end, arrayState.vertices);
     if (!triIntsector.vertices) return false;

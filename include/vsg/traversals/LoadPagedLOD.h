@@ -24,11 +24,11 @@ namespace vsg
     class VSG_DECLSPEC LoadPagedLOD : public vsg::Visitor
     {
     public:
-        LoadPagedLOD(ref_ptr<Camera> in_camera, int in_loadLevels = 30);
+        explicit LoadPagedLOD(ref_ptr<Camera> in_camera, int in_loadLevels = 30);
 
         void apply(Node& node) override;
         void apply(CullNode& node) override;
-        void apply(MatrixTransform& transform) override;
+        void apply(Transform& transform) override;
         void apply(LOD& lod) override;
         void apply(PagedLOD& plod) override;
 
@@ -36,7 +36,6 @@ namespace vsg
         int loadLevels = 0;
         int level = 0;
         unsigned int numTiles = 0;
-        ref_ptr<Options> options;
 
     protected:
         using Plane = dplane;
@@ -52,15 +51,15 @@ namespace vsg
         PolytopeStack _frustumStack;
         Paths _pathStack;
 
-        inline std::pair<double, double> computeDistanceAndRF(dsphere& bs) const
+        inline std::pair<double, double> computeDistanceAndRF(const dsphere& bs) const
         {
             const auto& proj = projectionMatrixStack.top();
             const auto& mv = modelviewMatrixStack.top();
             auto f = -proj[1][1];
 
-            auto distance = std::abs(mv[0][2] * bs.x + mv[1][2] * bs.y + mv[2][2] * bs.z + mv[3][2]);
+            auto dist = std::abs(mv[0][2] * bs.x + mv[1][2] * bs.y + mv[2][2] * bs.z + mv[3][2]);
             auto rf = bs.r * f;
-            return {distance, rf};
+            return {dist, rf};
         }
 
         void pushFrustum();

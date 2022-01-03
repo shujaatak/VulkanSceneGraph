@@ -14,6 +14,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <vsg/commands/Commands.h>
 #include <vsg/commands/CopyAndReleaseBuffer.h>
+#include <vsg/commands/CopyAndReleaseImage.h>
 #include <vsg/commands/PipelineBarrier.h>
 #include <vsg/io/Options.h>
 #include <vsg/nodes/Geometry.h>
@@ -86,11 +87,11 @@ void BuildAccelerationStructureCommand::setScratchBuffer(ref_ptr<Buffer>& scratc
 //
 // vsg::Context
 //
-Context::Context(Device* in_device, BufferPreferences bufferPreferences) :
+Context::Context(Device* in_device, const ResourceRequirements& resourceRequirements) :
     deviceID(in_device->deviceID),
     device(in_device),
-    deviceMemoryBufferPools(MemoryBufferPools::create("Device_MemoryBufferPool", device, bufferPreferences)),
-    stagingMemoryBufferPools(MemoryBufferPools::create("Staging_MemoryBufferPool", device, bufferPreferences)),
+    deviceMemoryBufferPools(MemoryBufferPools::create("Device_MemoryBufferPool", device, resourceRequirements)),
+    stagingMemoryBufferPools(MemoryBufferPools::create("Staging_MemoryBufferPool", device, resourceRequirements)),
     scratchBufferSize(0)
 {
     //semaphore = vsg::Semaphore::create(device);
@@ -134,7 +135,7 @@ ShaderCompiler* Context::getOrCreateShaderCompiler()
     if (shaderCompiler) return shaderCompiler;
 
 #ifdef HAS_GLSLANG
-    shaderCompiler = new ShaderCompiler;
+    shaderCompiler = ShaderCompiler::create();
 
     if (device && device->getInstance())
     {
@@ -146,7 +147,7 @@ ShaderCompiler* Context::getOrCreateShaderCompiler()
     return shaderCompiler;
 }
 
-void Context::copy(ref_ptr<Data> data, ImageInfo dest)
+void Context::copy(ref_ptr<Data> data, ref_ptr<ImageInfo> dest)
 {
     if (!copyImageCmd)
     {
@@ -157,7 +158,7 @@ void Context::copy(ref_ptr<Data> data, ImageInfo dest)
     copyImageCmd->copy(data, dest);
 }
 
-void Context::copy(ref_ptr<Data> data, ImageInfo dest, uint32_t numMipMapLevels)
+void Context::copy(ref_ptr<Data> data, ref_ptr<ImageInfo> dest, uint32_t numMipMapLevels)
 {
     if (!copyImageCmd)
     {
@@ -168,7 +169,7 @@ void Context::copy(ref_ptr<Data> data, ImageInfo dest, uint32_t numMipMapLevels)
     copyImageCmd->copy(data, dest, numMipMapLevels);
 }
 
-void Context::copy(BufferInfo src, BufferInfo dest)
+void Context::copy(ref_ptr<BufferInfo> src, ref_ptr<BufferInfo> dest)
 {
     if (!copyBufferCmd)
     {
@@ -260,18 +261,16 @@ void Context::waitForCompletion()
 
     // we must wait for the queue to empty before we can safely clean up the commandBuffer
     uint64_t timeout = 1000000000;
-    if (timeout > 0)
-    {
-        VkResult result;
-        while ((result = fence->wait(timeout)) == VK_TIMEOUT)
-        {
-            std::cout << "Context::waitForCompletion() " << this << " fence->wait() timed out, trying again." << std::endl;
-        }
 
-        if (result != VK_SUCCESS)
-        {
-            std::cout << "Context::waitForCompletion()  " << this << " fence->wait() failed with error. VkResult = " << result << std::endl;
-        }
+    VkResult result;
+    while ((result = fence->wait(timeout)) == VK_TIMEOUT)
+    {
+        std::cout << "Context::waitForCompletion() " << this << " fence->wait() timed out, trying again." << std::endl;
+    }
+
+    if (result != VK_SUCCESS)
+    {
+        std::cout << "Context::waitForCompletion()  " << this << " fence->wait() failed with error. VkResult = " << result << std::endl;
     }
 
     commands.clear();

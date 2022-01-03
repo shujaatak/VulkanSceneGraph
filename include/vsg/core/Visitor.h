@@ -34,16 +34,18 @@ namespace vsg
     class CullGroup;
     class CullNode;
     class MatrixTransform;
+    class Transform;
     class Geometry;
     class VertexIndexDraw;
     class DepthSorted;
     class Bin;
     class Switch;
-    class MaskGroup;
 
     // forward declare vulkan classes
+    class BufferInfo;
     class Command;
     class StateCommand;
+    class StateSwitch;
     class CommandBuffer;
     class RenderPass;
     class BindDescriptorSet;
@@ -101,6 +103,9 @@ namespace vsg
     class ScrollWheelEvent;
     class TerminateEvent;
     class FrameEvent;
+
+    // forward declare util classes
+    class AnimationPath;
 
     // forward declare viewer classes
     class Camera;
@@ -233,16 +238,18 @@ namespace vsg
         virtual void apply(CullGroup&);
         virtual void apply(CullNode&);
         virtual void apply(MatrixTransform&);
+        virtual void apply(Transform&);
         virtual void apply(Geometry&);
         virtual void apply(VertexIndexDraw&);
         virtual void apply(DepthSorted&);
         virtual void apply(Bin&);
         virtual void apply(Switch&);
-        virtual void apply(MaskGroup&);
 
         // Vulkan nodes
+        virtual void apply(BufferInfo&);
         virtual void apply(Command&);
         virtual void apply(StateCommand&);
+        virtual void apply(StateSwitch&);
         virtual void apply(CommandBuffer&);
         virtual void apply(RenderPass&);
         virtual void apply(BindDescriptorSet&);
@@ -300,6 +307,9 @@ namespace vsg
         virtual void apply(ScrollWheelEvent&);
         virtual void apply(TerminateEvent&);
         virtual void apply(FrameEvent&);
+
+        // utils
+        virtual void apply(AnimationPath&);
 
         // viewer
         virtual void apply(Camera&);

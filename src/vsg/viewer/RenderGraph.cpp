@@ -38,6 +38,8 @@ RenderGraph::RenderGraph(ref_ptr<Window> in_window, ref_ptr<View> in_view) :
         addChild(in_view);
     }
 
+    previous_extent = window->extent2D();
+
     if (in_view && in_view->camera && in_view->camera->viewportState)
     {
         renderArea = in_view->camera->getRenderArea();
@@ -89,7 +91,7 @@ VkExtent2D RenderGraph::getExtent() const
 void RenderGraph::accept(RecordTraversal& recordTraversal) const
 {
     auto extent = getExtent();
-    if (previous_extent.width == invalid_dimension || previous_extent.width == invalid_dimension || !windowResizeHandler)
+    if (previous_extent.width == invalid_dimension || previous_extent.height == invalid_dimension || !windowResizeHandler)
     {
         previous_extent = extent;
     }

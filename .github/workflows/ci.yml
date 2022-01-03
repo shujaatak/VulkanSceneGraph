@@ -4,6 +4,7 @@ on:
   pull_request:
 env:
   VulkanSDKVersion: 1.2.162.1
+  CMakeVersion: 3.10.x
 jobs:
   linux-build:
     runs-on: ubuntu-latest
@@ -11,6 +12,10 @@ jobs:
       BuildDocEnabled: ${{github.event_name == 'push' && github.ref == 'refs/heads/master'}}
       VULKAN_SDK: $GITHUB_WORKSPACE/../$VulkanSDKVersion/x86_64
     steps:
+    - name: Setup cmake
+      uses: jwlawson/actions-setup-cmake@v1.9
+      with:
+        cmake-version: ${{env.CMakeVersion}}
     - uses: actions/checkout@v2
     - name: Cache
       id: cache
@@ -39,10 +44,16 @@ jobs:
       with:
         name: VSG Documentation
         path: html
+    - name: Install
+      run: sudo make install
 
   windows-build:
-    runs-on: windows-latest
+    runs-on: windows-2016
     steps:
+    - name: Setup cmake
+      uses: jwlawson/actions-setup-cmake@v1.9
+      with:
+        cmake-version: ${{env.CMakeVersion}}
     - uses: actions/checkout@v2
     - name: Set env
       id: env
@@ -60,17 +71,23 @@ jobs:
         $installer = Start-Process -FilePath ../vulkan-sdk-${{env.VulkanSDKVersion}}.exe -Wait -PassThru -ArgumentList @("/S");
         $installer.WaitForExit();
     - name: CMake
-      run: cmake . -G "Visual Studio 16 2019" -A x64
+      run: cmake . -G "Visual Studio 15 2017" -A x64
       env:
         VULKAN_SDK: ${{steps.env.outputs.VULKAN_SDK}}
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1.0.2
-    - name: MSBuild
+    - name: MSBuild Compile
       run: MSBuild.exe ALL_BUILD.vcxproj -p:Configuration=Release
+    - name: MSBuild Install
+      run: MSBuild.exe INSTALL.vcxproj -p:Configuration=Release
 
   windows-dll-build:
-    runs-on: windows-latest
+    runs-on: windows-2016
     steps:
+    - name: Setup cmake
+      uses: jwlawson/actions-setup-cmake@v1.9
+      with:
+        cmake-version: ${{env.CMakeVersion}}
     - uses: actions/checkout@v2
     - name: Set env
       id: env
@@ -88,13 +105,15 @@ jobs:
         $installer = Start-Process -FilePath ../vulkan-sdk-${{env.VulkanSDKVersion}}.exe -Wait -PassThru -ArgumentList @("/S");
         $installer.WaitForExit();
     - name: CMake
-      run: cmake . -G "Visual Studio 16 2019" -A x64 -DBUILD_SHARED_LIBS=ON
+      run: cmake . -G "Visual Studio 15 2017" -A x64 -DBUILD_SHARED_LIBS=ON
       env:
         VULKAN_SDK: ${{steps.env.outputs.VULKAN_SDK}}
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1.0.2
-    - name: MSBuild
+    - name: MSBuild Compile
       run: MSBuild.exe ALL_BUILD.vcxproj -p:Configuration=Release
+    - name: MSBuild Install
+      run: MSBuild.exe INSTALL.vcxproj -p:Configuration=Release
 
   macos-build:
     runs-on: macos-latest
@@ -130,3 +149,6 @@ jobs:
 
     - name: Make
       run: make -j 2
+      
+    - name: Install
+      run: make install

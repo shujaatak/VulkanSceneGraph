@@ -12,18 +12,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <deque>
-#include <memory>
-
-#include <vsg/core/Object.h>
-#include <vsg/core/ScratchMemory.h>
-#include <vsg/nodes/Group.h>
-#include <vsg/state/BufferInfo.h>
-#include <vsg/state/DescriptorImage.h>
-#include <vsg/state/GraphicsPipeline.h>
-#include <vsg/vk/CommandPool.h>
-#include <vsg/vk/DescriptorPool.h>
-#include <vsg/vk/Fence.h>
+#include <vsg/state/ImageInfo.h>
 #include <vsg/vk/MemoryBufferPools.h>
 
 #include <vsg/commands/Command.h>
@@ -39,10 +28,10 @@ namespace vsg
         struct VSG_DECLSPEC CopyData
         {
             CopyData() {}
-            CopyData(BufferInfo src, ImageInfo dest, uint32_t numMipMapLevels = 1);
+            CopyData(ref_ptr<BufferInfo> src, ref_ptr<ImageInfo> dest, uint32_t numMipMapLevels = 1);
 
-            BufferInfo source;
-            ImageInfo destination;
+            ref_ptr<BufferInfo> source;
+            ref_ptr<ImageInfo> destination;
 
             uint32_t mipLevels = 1;
 
@@ -56,22 +45,22 @@ namespace vsg
         };
 
         void add(const CopyData& cd);
-        void add(BufferInfo src, ImageInfo dest);
-        void add(BufferInfo src, ImageInfo dest, uint32_t numMipMapLevels);
+        void add(ref_ptr<BufferInfo> src, ref_ptr<ImageInfo> dest);
+        void add(ref_ptr<BufferInfo> src, ref_ptr<ImageInfo> dest, uint32_t numMipMapLevels);
 
         /// MemoryBufferPools used for allocation staging buffer used by the copy(ref_ptr<Data>, ImageInfo) method.  Users should assign a MemoryBufferPools with appropriate settings.
         ref_ptr<MemoryBufferPools> stagingMemoryBufferPools;
 
         /// copy data into a staging buffer and then use copy command to transfer this to the GPU image specified by ImageInfo
-        void copy(ref_ptr<Data> data, ImageInfo dest);
-        void copy(ref_ptr<Data> data, ImageInfo dest, uint32_t numMipMapLevels);
+        void copy(ref_ptr<Data> data, ref_ptr<ImageInfo> dest);
+        void copy(ref_ptr<Data> data, ref_ptr<ImageInfo> dest, uint32_t numMipMapLevels);
 
         void record(CommandBuffer& commandBuffer) const override;
 
     protected:
         virtual ~CopyAndReleaseImage();
 
-        void _copyDirectly(ref_ptr<Data> data, ImageInfo dest, uint32_t numMipMapLevels);
+        void _copyDirectly(ref_ptr<Data> data, ref_ptr<ImageInfo> dest, uint32_t numMipMapLevels);
 
         mutable std::mutex _mutex;
         mutable std::vector<CopyData> _pending;

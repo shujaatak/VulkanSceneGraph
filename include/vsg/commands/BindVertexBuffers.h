@@ -13,7 +13,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/commands/Command.h>
-#include <vsg/state/Buffer.h>
+#include <vsg/state/BufferInfo.h>
 #include <vsg/state/Descriptor.h>
 #include <vsg/vk/vk_buffer.h>
 
@@ -23,13 +23,12 @@ namespace vsg
     {
     public:
         BindVertexBuffers() {}
-
-        BindVertexBuffers(uint32_t in_firstBinding, const DataList& in_arrays) :
-            firstBinding(in_firstBinding),
-            arrays(in_arrays) {}
+        BindVertexBuffers(uint32_t in_firstBinding, const DataList& in_arrays);
 
         uint32_t firstBinding = 0;
-        DataList arrays;
+        BufferInfoList arrays;
+
+        void assignArrays(const DataList& in_arrays);
 
         void read(Input& input) override;
         void write(Output& output) const override;
@@ -43,7 +42,6 @@ namespace vsg
 
         struct VulkanData
         {
-            std::vector<ref_ptr<Buffer>> buffers;
             std::vector<VkBuffer> vkBuffers;
             std::vector<VkDeviceSize> offsets;
         };

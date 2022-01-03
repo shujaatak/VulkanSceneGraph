@@ -15,25 +15,22 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/nodes/Node.h>
 #include <vsg/traversals/ArrayState.h>
 
-#include <list>
-
 namespace vsg
 {
-
     class VSG_DECLSPEC Intersector : public Inherit<ConstVisitor, Intersector>
     {
     public:
         using NodePath = std::vector<const Node*>;
-        using ArrayStateStack = std::vector<ArrayState>;
+        using ArrayStateStack = std::vector<ref_ptr<ArrayState>>;
 
-        Intersector();
+        Intersector(ref_ptr<ArrayState> initialArrayData = {});
 
         //
         // handle traverse of the scene graph
         //
         void apply(const Node& node) override;
         void apply(const StateGroup& stategroup) override;
-        void apply(const MatrixTransform& transform) override;
+        void apply(const Transform& transform) override;
         void apply(const LOD& lod) override;
         void apply(const PagedLOD& plod) override;
         void apply(const CullNode& cn) override;
@@ -48,15 +45,16 @@ namespace vsg
 
         void apply(uint32_t firstBinding, const DataList& arrays);
 
-        void apply(const vsg::ushortArray& array) override;
-        void apply(const vsg::uintArray& array) override;
+        void apply(const BufferInfo& bufferInfo) override;
+        void apply(const ushortArray& array) override;
+        void apply(const uintArray& array) override;
 
         //
         // provide virtual functions for concrete Intersector implementations to provide handling of intersection with mesh geometries
         //
 
         /// clone and transform this Intersector to provide a new Intersector in local coordinates
-        virtual void pushTransform(const dmat4& m) = 0;
+        virtual void pushTransform(const Transform& transform) = 0;
 
         virtual void popTransform() = 0;
 
