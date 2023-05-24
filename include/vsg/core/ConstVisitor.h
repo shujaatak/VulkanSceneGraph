@@ -15,6 +15,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/Array.h>
 #include <vsg/core/Array2D.h>
 #include <vsg/core/Array3D.h>
+#include <vsg/core/Mask.h>
 #include <vsg/core/Value.h>
 
 namespace vsg
@@ -36,13 +37,26 @@ namespace vsg
     class MatrixTransform;
     class Transform;
     class Geometry;
+    class VertexDraw;
     class VertexIndexDraw;
     class DepthSorted;
     class Bin;
     class Switch;
+    class Light;
+    class AmbientLight;
+    class DirectionalLight;
+    class PointLight;
+    class SpotLight;
+
+    // forward declare vulkan classes
+    class Text;
+    class TextGroup;
+    class TextTechnique;
+    class TextLayout;
 
     // forward declare vulkan classes
     class BufferInfo;
+    class Compilable;
     class Command;
     class StateCommand;
     class StateSwitch;
@@ -77,6 +91,12 @@ namespace vsg
     class DynamicState;
     class ResourceHints;
     class ClearAttachments;
+    class QueryPool;
+    class ResetQueryPool;
+    class BeginQuery;
+    class EndQuery;
+    class WriteTimestamp;
+    class CopyQueryPoolResults;
 
     // forward declare rtx classes
     class DrawMeshTasks;
@@ -89,6 +109,8 @@ namespace vsg
     class ExposeWindowEvent;
     class ConfigureWindowEvent;
     class CloseWindowEvent;
+    class FocusInEvent;
+    class FocusOutEvent;
     class KeyEvent;
     class KeyPressEvent;
     class KeyReleaseEvent;
@@ -122,8 +144,8 @@ namespace vsg
     public:
         ConstVisitor();
 
-        uint32_t traversalMask = 0xffffffff;
-        uint32_t overrideMask = 0x0;
+        Mask traversalMask = MASK_ALL;
+        Mask overrideMask = MASK_OFF;
 
         virtual void apply(const Object&);
         virtual void apply(const Objects&);
@@ -137,6 +159,30 @@ namespace vsg
         virtual void apply(const uintValue&);
         virtual void apply(const floatValue&);
         virtual void apply(const doubleValue&);
+        virtual void apply(const vec2Value&);
+        virtual void apply(const vec3Value&);
+        virtual void apply(const vec4Value&);
+        virtual void apply(const dvec2Value&);
+        virtual void apply(const dvec3Value&);
+        virtual void apply(const dvec4Value&);
+        virtual void apply(const bvec2Value&);
+        virtual void apply(const bvec3Value&);
+        virtual void apply(const bvec4Value&);
+        virtual void apply(const ubvec2Value&);
+        virtual void apply(const ubvec3Value&);
+        virtual void apply(const ubvec4Value&);
+        virtual void apply(const svec2Value&);
+        virtual void apply(const svec3Value&);
+        virtual void apply(const svec4Value&);
+        virtual void apply(const usvec2Value&);
+        virtual void apply(const usvec3Value&);
+        virtual void apply(const usvec4Value&);
+        virtual void apply(const ivec2Value&);
+        virtual void apply(const ivec3Value&);
+        virtual void apply(const ivec4Value&);
+        virtual void apply(const uivec2Value&);
+        virtual void apply(const uivec3Value&);
+        virtual void apply(const uivec4Value&);
 
         // Arrays
         virtual void apply(const byteArray&);
@@ -229,6 +275,7 @@ namespace vsg
 
         // Nodes
         virtual void apply(const Node&);
+        virtual void apply(const Compilable&);
         virtual void apply(const Commands&);
         virtual void apply(const Group&);
         virtual void apply(const QuadGroup&);
@@ -240,10 +287,22 @@ namespace vsg
         virtual void apply(const MatrixTransform&);
         virtual void apply(const Transform&);
         virtual void apply(const Geometry&);
+        virtual void apply(const VertexDraw&);
         virtual void apply(const VertexIndexDraw&);
         virtual void apply(const DepthSorted&);
         virtual void apply(const Bin&);
         virtual void apply(const Switch&);
+        virtual void apply(const Light&);
+        virtual void apply(const AmbientLight&);
+        virtual void apply(const DirectionalLight&);
+        virtual void apply(const PointLight&);
+        virtual void apply(const SpotLight&);
+
+        // text
+        virtual void apply(const Text&);
+        virtual void apply(const TextGroup&);
+        virtual void apply(const TextTechnique&);
+        virtual void apply(const TextLayout&);
 
         // Vulkan nodes
         virtual void apply(const BufferInfo&);
@@ -281,8 +340,14 @@ namespace vsg
         virtual void apply(const Draw&);
         virtual void apply(const DrawIndexed&);
         virtual void apply(const ClearAttachments&);
+        virtual void apply(const QueryPool&);
+        virtual void apply(const ResetQueryPool&);
+        virtual void apply(const BeginQuery&);
+        virtual void apply(const EndQuery&);
+        virtual void apply(const WriteTimestamp&);
+        virtual void apply(const CopyQueryPoolResults&);
 
-        // rtx classes
+        // mesh shading classes
         virtual void apply(const DrawMeshTasks&);
         virtual void apply(const DrawMeshTasksIndirect&);
         virtual void apply(const DrawMeshTasksIndirectCount&);
@@ -293,6 +358,8 @@ namespace vsg
         virtual void apply(const ExposeWindowEvent&);
         virtual void apply(const ConfigureWindowEvent&);
         virtual void apply(const CloseWindowEvent&);
+        virtual void apply(const FocusInEvent&);
+        virtual void apply(const FocusOutEvent&);
         virtual void apply(const KeyEvent&);
         virtual void apply(const KeyPressEvent&);
         virtual void apply(const KeyReleaseEvent&);

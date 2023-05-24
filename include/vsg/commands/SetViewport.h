@@ -18,12 +18,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// Encapsulation of vkCmdSetViewer functionality, associated with dynamic updating a GraphicsPipeline's ViewportState
+    /// SetViewport command encapsulates vkCmdSetViewport call, associated with dynamic updating a GraphicsPipeline's ViewportState
     class VSG_DECLSPEC SetViewport : public Inherit<Command, SetViewport>
     {
     public:
         SetViewport();
-        SetViewport(uint32_t in_firstViewport, const Viewports& in_vieports);
+        SetViewport(uint32_t in_firstViewport, const Viewports& in_viewports);
 
         uint32_t firstViewport = 0;
         Viewports viewports;

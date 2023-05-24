@@ -11,6 +11,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/core/Exception.h>
+#include <vsg/core/compare.h>
 #include <vsg/io/Options.h>
 #include <vsg/state/BufferView.h>
 #include <vsg/vk/Context.h>
@@ -27,18 +28,33 @@ void BufferView::VulkanData::release()
     }
 }
 
-BufferView::BufferView(Buffer* in_buffer, VkFormat in_format, VkDeviceSize in_offset, VkDeviceSize in_range) :
+BufferView::BufferView()
+{
+}
+
+BufferView::BufferView(ref_ptr<Buffer> in_buffer, VkFormat in_format, VkDeviceSize in_offset, VkDeviceSize in_range) :
     buffer(in_buffer),
     format(in_format),
     offset(in_offset),
     range(in_range)
 {
-    // TODO need to put memory slot in place
 }
 
 BufferView::~BufferView()
 {
     for (auto& vd : _vulkanData) vd.release();
+}
+int BufferView::compare(const Object& rhs_object) const
+{
+    int result = Object::compare(rhs_object);
+    if (result != 0) return result;
+
+    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+
+    if ((result = compare_pointer(buffer, rhs.buffer))) return result;
+    if ((result = compare_value(format, rhs.format))) return result;
+    if ((result = compare_value(offset, rhs.offset))) return result;
+    return compare_value(range, rhs.range);
 }
 
 void BufferView::compile(Device* device)

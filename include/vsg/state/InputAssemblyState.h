@@ -16,10 +16,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+
+    /// InputAssemblyState encapsulates to VkPipelineInputAssemblyStateCreateInfo settings passed when setting up GraphicsPipeline
     class VSG_DECLSPEC InputAssemblyState : public Inherit<GraphicsPipelineState, InputAssemblyState>
     {
     public:
         InputAssemblyState();
+        InputAssemblyState(const InputAssemblyState& ias);
         explicit InputAssemblyState(VkPrimitiveTopology primitiveTopology, VkBool32 primitiveRestart = VK_FALSE);
 
         /// VkPipelineInputAssemblyStateCreateInfo settings

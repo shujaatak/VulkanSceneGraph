@@ -65,6 +65,102 @@ void Visitor::apply(doubleValue& value)
 {
     apply(static_cast<Data&>(value));
 }
+void Visitor::apply(vec2Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(vec3Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(vec4Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(dvec2Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(dvec3Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(dvec4Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(bvec2Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(bvec3Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(bvec4Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(ubvec2Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(ubvec3Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(ubvec4Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(svec2Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(svec3Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(svec4Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(usvec2Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(usvec3Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(usvec4Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(ivec2Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(ivec3Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(ivec4Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(uivec2Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(uivec3Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
+void Visitor::apply(uivec4Value& value)
+{
+    apply(static_cast<Data&>(value));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -421,6 +517,10 @@ void Visitor::apply(Node& value)
 {
     apply(static_cast<Object&>(value));
 }
+void Visitor::apply(Compilable& value)
+{
+    apply(static_cast<Node&>(value));
+}
 void Visitor::apply(Commands& value)
 {
     apply(static_cast<Node&>(value));
@@ -465,6 +565,10 @@ void Visitor::apply(Geometry& value)
 {
     apply(static_cast<Command&>(value));
 }
+void Visitor::apply(VertexDraw& value)
+{
+    apply(static_cast<Command&>(value));
+}
 void Visitor::apply(VertexIndexDraw& value)
 {
     apply(static_cast<Command&>(value));
@@ -481,10 +585,51 @@ void Visitor::apply(Switch& value)
 {
     apply(static_cast<Node&>(value));
 }
+void Visitor::apply(Light& value)
+{
+    apply(static_cast<Node&>(value));
+}
+void Visitor::apply(AmbientLight& value)
+{
+    apply(static_cast<Light&>(value));
+}
+void Visitor::apply(DirectionalLight& value)
+{
+    apply(static_cast<Light&>(value));
+}
+void Visitor::apply(PointLight& value)
+{
+    apply(static_cast<Light&>(value));
+}
+void Visitor::apply(SpotLight& value)
+{
+    apply(static_cast<Light&>(value));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Vulkan Object
+// Text Objects
+//
+void Visitor::apply(Text& value)
+{
+    apply(static_cast<Node&>(value));
+}
+void Visitor::apply(TextGroup& value)
+{
+    apply(static_cast<Node&>(value));
+}
+void Visitor::apply(TextTechnique& value)
+{
+    apply(static_cast<Object&>(value));
+}
+void Visitor::apply(TextLayout& value)
+{
+    apply(static_cast<Object&>(value));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Vulkan Objects
 //
 void Visitor::apply(BufferInfo& value)
 {
@@ -492,7 +637,7 @@ void Visitor::apply(BufferInfo& value)
 }
 void Visitor::apply(Command& value)
 {
-    apply(static_cast<Node&>(value));
+    apply(static_cast<Compilable&>(value));
 }
 void Visitor::apply(StateCommand& value)
 {
@@ -626,10 +771,34 @@ void Visitor::apply(ClearAttachments& value)
 {
     apply(static_cast<Command&>(value));
 }
+void Visitor::apply(QueryPool& value)
+{
+    apply(static_cast<Object&>(value));
+}
+void Visitor::apply(ResetQueryPool& value)
+{
+    apply(static_cast<Command&>(value));
+}
+void Visitor::apply(BeginQuery& value)
+{
+    apply(static_cast<Command&>(value));
+}
+void Visitor::apply(EndQuery& value)
+{
+    apply(static_cast<Command&>(value));
+}
+void Visitor::apply(WriteTimestamp& value)
+{
+    apply(static_cast<Command&>(value));
+}
+void Visitor::apply(CopyQueryPoolResults& value)
+{
+    apply(static_cast<Command&>(value));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-// RTX
+// Mesh shading
 //
 void Visitor::apply(DrawMeshTasks& dmt)
 {
@@ -665,6 +834,14 @@ void Visitor::apply(ConfigureWindowEvent& event)
     apply(static_cast<WindowEvent&>(event));
 }
 void Visitor::apply(CloseWindowEvent& event)
+{
+    apply(static_cast<WindowEvent&>(event));
+}
+void Visitor::apply(FocusInEvent& event)
+{
+    apply(static_cast<WindowEvent&>(event));
+}
+void Visitor::apply(FocusOutEvent& event)
 {
     apply(static_cast<WindowEvent&>(event));
 }

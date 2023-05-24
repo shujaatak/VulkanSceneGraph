@@ -19,6 +19,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// Draw command encapsulates vkCmdDraw call and associated settings
     class VSG_DECLSPEC Draw : public Inherit<Command, Draw>
     {
     public:
@@ -29,6 +30,8 @@ namespace vsg
             instanceCount(in_instanceCount),
             firstVertex(in_firstVertex),
             firstInstance(in_firstInstance) {}
+
+        int compare(const Object& rhs_object) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;

@@ -11,76 +11,44 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/core/Auxiliary.h>
+#include <vsg/core/compare.h>
 #include <vsg/io/Input.h>
+#include <vsg/io/Logger.h>
 #include <vsg/io/Options.h>
 #include <vsg/io/Output.h>
 
-#if 1
-#    include <iostream>
-#    define DEBUG_NOTIFY \
-        if (false) std::cout
-#else
-#    include <iostream>
-#    define DEBUG_NOTIFY std::cout
-#endif
-
 using namespace vsg;
 
-Auxiliary::Auxiliary(Allocator* allocator) :
+Auxiliary::Auxiliary(Object* object) :
     _referenceCount(0),
-    _connectedObject(0),
-    _allocator(allocator)
+    _connectedObject(object)
 {
-    DEBUG_NOTIFY << "Auxiliary::Auxiliary(Allocator = " << allocator << ") " << this << " " << std::endl;
-}
-
-Auxiliary::Auxiliary(Object* object, Allocator* allocator) :
-    _referenceCount(0),
-    _connectedObject(object),
-    _allocator(allocator)
-{
-    DEBUG_NOTIFY << "Auxiliary::Auxiliary(Object = " << object << ", Allocator = " << allocator << ") " << this << " " << std::endl;
+    //vsg::debug("Auxiliary::Auxiliary(Object = ", object, ") ", this);
 }
 
 Auxiliary::~Auxiliary()
 {
-    DEBUG_NOTIFY << "Auxiliary::~Auxiliary() " << this << std::endl;
-    if (_allocator) _allocator->detachSharedAuxiliary(this);
+    //vsg::debug("Auxiliary::~Auxiliary() ", this);
 }
 
 void Auxiliary::ref() const
 {
     ++_referenceCount;
-    DEBUG_NOTIFY << "Auxiliary::ref() " << this << " " << _referenceCount.load() << std::endl;
+    //debug("Auxiliary::ref() ", this, " ", _referenceCount.load());
 }
 
 void Auxiliary::unref() const
 {
-    DEBUG_NOTIFY << "Auxiliary::unref() " << this << " " << _referenceCount.load() << std::endl;
+    //debug("Auxiliary::unref() ", this, " ", _referenceCount.load());
     if (_referenceCount.fetch_sub(1) <= 1)
     {
-        if (_allocator)
-        {
-            ref_ptr<Allocator> allocator = _allocator;
-
-            std::size_t size = getSizeOf();
-
-            DEBUG_NOTIFY << "  Calling this->~Auxiliary();" << std::endl;
-            this->~Auxiliary();
-
-            DEBUG_NOTIFY << "  After Calling this->~Auxiliary();" << std::endl;
-            allocator->deallocate(this, size);
-        }
-        else
-        {
-            delete this;
-        }
+        delete this;
     }
 }
 
 void Auxiliary::unref_nodelete() const
 {
-    //std::cout<<"Auxiliary::unref_nodelete() "<<this<<" "<<_referenceCount.load()<<std::endl;
+    //debug("Auxiliary::unref_nodelete() ", this, " ", _referenceCount.load());
     --_referenceCount;
 }
 
@@ -95,7 +63,7 @@ bool Auxiliary::signalConnectedObjectToBeDeleted()
     }
 
     // disconnect this Auxiliary object from the ConnectedObject
-    _connectedObject = 0;
+    _connectedObject = nullptr;
 
     // return true, the object should be deleted
     return true;
@@ -105,32 +73,32 @@ void Auxiliary::resetConnectedObject()
 {
     std::scoped_lock<std::mutex> guard(_mutex);
 
-    _connectedObject = 0;
+    _connectedObject = nullptr;
 }
 
-void Auxiliary::setObject(const std::string& key, Object* object)
+int Auxiliary::compare(const Auxiliary& rhs) const
 {
-    _objectMap[key] = object;
-    DEBUG_NOTIFY << "Auxiliary::setObject( [" << key << "], " << object << ")"
-                 << " " << _objectMap.size() << " " << &_objectMap << std::endl;
-}
+    auto lhs_itr = userObjects.begin();
+    auto rhs_itr = rhs.userObjects.begin();
+    while (lhs_itr != userObjects.end() && rhs_itr != rhs.userObjects.end())
+    {
+        if (lhs_itr->first < rhs_itr->first) return -1;
+        if (lhs_itr->first > rhs_itr->first) return 1;
+        if (int result = vsg::compare_pointer(lhs_itr->second, rhs_itr->second); result != 0) return result;
+        ++lhs_itr;
+        ++rhs_itr;
+    }
 
-Object* Auxiliary::getObject(const std::string& key)
-{
-    DEBUG_NOTIFY << "Auxiliary::getObject( [" << key << "])" << std::endl;
-    ObjectMap::iterator itr = _objectMap.find(key);
-    if (itr != _objectMap.end())
-        return itr->second.get();
+    // only can get here if either lhs_itr == userObjects.end() || rhs_itr == rhs.userObjects.end()
+    if (lhs_itr == userObjects.end())
+    {
+        if (rhs_itr != rhs.userObjects.end())
+            return -1;
+        else
+            return 0;
+    }
     else
-        return nullptr;
-}
-
-const Object* Auxiliary::getObject(const std::string& key) const
-{
-    DEBUG_NOTIFY << "Auxiliary::getObject( [" << key << "]) const" << std::endl;
-    ObjectMap::const_iterator itr = _objectMap.find(key);
-    if (itr != _objectMap.end())
-        return itr->second.get();
-    else
-        return nullptr;
+    {
+        return 1;
+    }
 }

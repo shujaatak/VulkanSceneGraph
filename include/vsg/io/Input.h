@@ -17,6 +17,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/Version.h>
 
 #include <vsg/maths/box.h>
+#include <vsg/maths/mat3.h>
 #include <vsg/maths/mat4.h>
 #include <vsg/maths/plane.h>
 #include <vsg/maths/quat.h>
@@ -28,6 +29,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/io/FileSystem.h>
 #include <vsg/io/ObjectFactory.h>
 
+#include <set>
 #include <unordered_map>
 
 namespace vsg
@@ -36,12 +38,14 @@ namespace vsg
     // forward declare
     class Options;
 
+    /// Base class that provides a means of read a range of data types to an input stream.
+    /// Used by vsg::Object::read(Input&) implementations across the VSG to provide native serialization from binary/ascii files
     class VSG_DECLSPEC Input
     {
     public:
         Input(ref_ptr<ObjectFactory> in_objectFactory, ref_ptr<const Options> in_options = {});
 
-        Options& operator=(const Options& rhs) = delete;
+        Input& operator=(const Input& rhs) = delete;
 
         /// return true if property name matches the next token in the stream, or if property names are not required for format
         virtual bool matchPropertyName(const char* propertyName) = 0;
@@ -58,6 +62,7 @@ namespace vsg
         virtual void read(size_t num, float* value) = 0;
         virtual void read(size_t num, double* value) = 0;
         virtual void read(size_t num, std::string* value) = 0;
+        virtual void read(size_t num, Path* value) = 0;
 
         // read object
         virtual ref_ptr<Object> read() = 0;
@@ -93,6 +98,8 @@ namespace vsg
         void read(size_t num, uivec4* value) { read(num * value->size(), value->data()); }
         void read(size_t num, quat* value) { read(num * value->size(), value->data()); }
         void read(size_t num, dquat* value) { read(num * value->size(), value->data()); }
+        void read(size_t num, mat3* value) { read(num * value->size(), value->data()); }
+        void read(size_t num, dmat3* value) { read(num * value->size(), value->data()); }
         void read(size_t num, mat4* value) { read(num * value->size(), value->data()); }
         void read(size_t num, dmat4* value) { read(num * value->size(), value->data()); }
         void read(size_t num, sphere* value) { read(num * value->size(), value->data()); }
@@ -102,7 +109,7 @@ namespace vsg
         void read(size_t num, plane* value) { read(num * value->size(), value->data()); }
         void read(size_t num, dplane* value) { read(num * value->size(), value->data()); }
 
-        // treat non standard type as raw data,
+        /// treat non standard type as raw data,
         template<typename T>
         void read(size_t num, T* value)
         {
@@ -124,7 +131,7 @@ namespace vsg
         }
 
         template<typename T>
-        void read(const char* propertyName, std::vector<ref_ptr<T>>& values)
+        void readObjects(const char* propertyName, T& values)
         {
             if (!matchPropertyName(propertyName)) return;
 
@@ -132,7 +139,9 @@ namespace vsg
             read(1, &numElements);
             values.resize(numElements);
 
-            const char* element_name = type_name<T>();
+            using element_type = typename T::value_type::element_type;
+            const char* element_name = type_name<element_type>();
+
             for (uint32_t i = 0; i < numElements; ++i)
             {
                 read(element_name, values[i]);
@@ -140,7 +149,7 @@ namespace vsg
         }
 
         template<typename T>
-        void read(const char* propertyName, std::vector<T>& values)
+        void readValues(const char* propertyName, std::vector<T>& values)
         {
             if (!matchPropertyName(propertyName)) return;
 
@@ -154,7 +163,23 @@ namespace vsg
             }
         }
 
-        // match property name and read value(s)
+        template<typename T>
+        void readValues(const char* propertyName, std::set<T>& values)
+        {
+            if (!matchPropertyName(propertyName)) return;
+
+            uint32_t numElements = 0;
+            read(1, &numElements);
+
+            for (uint32_t i = 0; i < numElements; ++i)
+            {
+                T v;
+                read("element", v);
+                values.insert(v);
+            }
+        }
+
+        /// match property name and read value(s)
         template<typename... Args>
         void read(const char* propertyName, Args&... args)
         {
@@ -164,7 +189,7 @@ namespace vsg
             (read(1, &(args)), ...);
         }
 
-        // read object of a particular type
+        /// read object of a particular type
         ref_ptr<Object> readObject(const char* propertyName)
         {
             if (!matchPropertyName(propertyName)) return ref_ptr<Object>();
@@ -172,7 +197,7 @@ namespace vsg
             return read();
         }
 
-        // read object of a particular type
+        /// read object of a particular type
         template<class T>
         ref_ptr<T> readObject(const char* propertyName)
         {
@@ -182,7 +207,7 @@ namespace vsg
             return ref_ptr<T>(dynamic_cast<T*>(object.get()));
         }
 
-        // read object of a particular type
+        /// read object of a particular type
         template<class T>
         void readObject(const char* propertyName, ref_ptr<T>& arg)
         {
@@ -191,7 +216,7 @@ namespace vsg
             arg = read().cast<T>();
         }
 
-        // read a value of particular type
+        /// read a value of particular type
         template<typename T>
         T readValue(const char* propertyName)
         {

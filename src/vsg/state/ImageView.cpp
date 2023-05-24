@@ -11,6 +11,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/core/Exception.h>
+#include <vsg/core/compare.h>
 #include <vsg/io/Options.h>
 #include <vsg/state/ImageView.h>
 #include <vsg/vk/Context.h>
@@ -48,9 +49,9 @@ ImageView::ImageView(ref_ptr<Image> in_image) :
 {
     if (image)
     {
-        if (image->data && image->data->getLayout().imageViewType >= 0)
+        if (image->data && image->data->properties.imageViewType >= 0)
         {
-            viewType = static_cast<VkImageViewType>(image->data->getLayout().imageViewType);
+            viewType = static_cast<VkImageViewType>(image->data->properties.imageViewType);
         }
         else
         {
@@ -72,9 +73,9 @@ ImageView::ImageView(ref_ptr<Image> in_image, VkImageAspectFlags aspectFlags) :
 {
     if (image)
     {
-        if (image->data && image->data->getLayout().imageViewType >= 0)
+        if (image->data && image->data->properties.imageViewType >= 0)
         {
-            viewType = static_cast<VkImageViewType>(image->data->getLayout().imageViewType);
+            viewType = static_cast<VkImageViewType>(image->data->properties.imageViewType);
         }
         else
         {
@@ -94,6 +95,20 @@ ImageView::ImageView(ref_ptr<Image> in_image, VkImageAspectFlags aspectFlags) :
 ImageView::~ImageView()
 {
     for (auto& vd : _vulkanData) vd.release();
+}
+
+int ImageView::compare(const Object& rhs_object) const
+{
+    int result = Object::compare(rhs_object);
+    if (result != 0) return result;
+
+    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+
+    if ((result = compare_value(flags, rhs.flags))) return result;
+    if ((result = compare_pointer(image, rhs.image))) return result;
+    if ((result = compare_value(viewType, rhs.viewType))) return result;
+    if ((result = compare_memory(components, rhs.components))) return result;
+    return compare_memory(subresourceRange, rhs.subresourceRange);
 }
 
 void ImageView::compile(Device* device)
@@ -165,12 +180,6 @@ ref_ptr<ImageView> vsg::createImageView(vsg::Context& context, ref_ptr<Image> im
 
     // allocate memory with out export memory info extension
     auto [deviceMemory, offset] = context.deviceMemoryBufferPools->reserveMemory(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    if (!deviceMemory)
-    {
-        throw Exception{"Error: Failed allocate memory for image.", 0};
-    }
-
     image->bind(deviceMemory, offset);
 
     auto imageView = ImageView::create(image, aspectFlags);
@@ -183,15 +192,7 @@ ref_ptr<ImageView> vsg::createImageView(Device* device, ref_ptr<Image> image, Vk
 {
     image->compile(device);
 
-    // allocate memory with out export memory info extension
-    auto deviceMemory = DeviceMemory::create(device, image->getMemoryRequirements(device->deviceID), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    if (!deviceMemory)
-    {
-        throw Exception{"Error: Failed allocate memory for image.", 0};
-    }
-
-    image->bind(deviceMemory, 0);
+    image->allocateAndBindMemory(device);
 
     auto imageView = ImageView::create(image, aspectFlags);
     imageView->compile(device);

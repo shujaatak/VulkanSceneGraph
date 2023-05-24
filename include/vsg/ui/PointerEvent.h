@@ -12,15 +12,16 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/app/Window.h>
 #include <vsg/core/observer_ptr.h>
 #include <vsg/ui/WindowEvent.h>
-#include <vsg/viewer/Window.h>
 
 namespace vsg
 {
 
     enum ButtonMask : uint16_t
     {
+        BUTTON_MASK_OFF = 0,
         BUTTON_MASK_1 = 256,
         BUTTON_MASK_2 = 512,
         BUTTON_MASK_3 = 1024,
@@ -28,7 +29,7 @@ namespace vsg
         BUTTON_MASK_5 = 4096  /// mouse wheel down
     };
 
-    VSG_type_name(vsg::PointerEvent);
+    /// PointerEvent is a base class for mouse pointer events
     class VSG_DECLSPEC PointerEvent : public Inherit<WindowEvent, PointerEvent>
     {
     public:
@@ -47,8 +48,9 @@ namespace vsg
         void read(Input& input) override;
         void write(Output& output) const override;
     };
+    VSG_type_name(vsg::PointerEvent);
 
-    VSG_type_name(vsg::ButtonPressEvent);
+    /// ButtonPressEvent represent a button press event.
     class VSG_DECLSPEC ButtonPressEvent : public Inherit<PointerEvent, ButtonPressEvent>
     {
     public:
@@ -63,8 +65,9 @@ namespace vsg
         void read(Input& input) override;
         void write(Output& output) const override;
     };
+    VSG_type_name(vsg::ButtonPressEvent);
 
-    VSG_type_name(vsg::ButtonReleaseEvent);
+    /// ButtonReleaseEvent represent a button release event.
     class VSG_DECLSPEC ButtonReleaseEvent : public Inherit<PointerEvent, ButtonReleaseEvent>
     {
     public:
@@ -79,8 +82,9 @@ namespace vsg
         void read(Input& input) override;
         void write(Output& output) const override;
     };
+    VSG_type_name(vsg::ButtonReleaseEvent);
 
-    VSG_type_name(vsg::MoveEvent);
+    /// MoveEvent represent a button move event.
     class MoveEvent : public Inherit<PointerEvent, MoveEvent>
     {
     public:
@@ -89,5 +93,6 @@ namespace vsg
         MoveEvent(Window* in_window, time_point in_time, int32_t in_x, int32_t in_y, ButtonMask in_buttonMask) :
             Inherit(in_window, in_time, in_x, in_y, in_buttonMask) {}
     };
+    VSG_type_name(vsg::MoveEvent);
 
 } // namespace vsg

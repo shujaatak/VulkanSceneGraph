@@ -12,14 +12,22 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/core/Allocator.h>
 #include <vsg/core/Inherit.h>
 
 namespace vsg
 {
+
+    /// Node base class used for internal nodes within the scene graph.
+    /// Specializes new/delete so that nodes are automatically allocated alongside of other nodes via vsg::Allocator's MEMORY_NODES_OBJECTS affinity.
     class VSG_DECLSPEC Node : public Inherit<Object, Node>
     {
     public:
-        Node(Allocator* allocator = nullptr);
+        Node();
+
+        /// provide new and delete to enable custom memory management via the vsg::Allocator singleton, using the MEMORY_NODES_OBJECTS
+        static void* operator new(std::size_t count);
+        static void operator delete(void* ptr);
 
     protected:
         virtual ~Node();

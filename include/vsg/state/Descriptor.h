@@ -21,6 +21,9 @@ namespace vsg
 
     using DescriptorBufferInfos = std::vector<VkDescriptorBufferInfo>;
 
+    /// Descriptor base class for descriptor DescriptorBuffer/DescriptorImage/DescriptorTexelBufferView classes.
+    /// Descriptors are assigned BindDescriptorState state commands.
+    /// Provides VkWriteDescriptorSet settings that are required for all types of descriptors.
     class VSG_DECLSPEC Descriptor : public Inherit<Object, Descriptor>
     {
     public:
@@ -30,6 +33,8 @@ namespace vsg
         uint32_t dstBinding;
         uint32_t dstArrayElement;
         VkDescriptorType descriptorType;
+
+        int compare(const Object& rhs_object) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;

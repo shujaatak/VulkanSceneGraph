@@ -12,7 +12,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/core/Allocator.h>
+#include <vsg/core/Object.h>
 #include <vsg/core/ref_ptr.h>
 
 #include <map>
@@ -37,20 +37,52 @@ namespace vsg
         void unref_nodelete() const;
         inline unsigned int referenceCount() const { return _referenceCount.load(); }
 
-        void setObject(const std::string& key, Object* object);
-        Object* getObject(const std::string& key);
-        const Object* getObject(const std::string& key) const;
+        virtual int compare(const Auxiliary& rhs) const;
+
+        void setObject(const std::string& key, ref_ptr<Object> object)
+        {
+            userObjects[key] = object;
+        }
+
+        Object* getObject(const std::string& key)
+        {
+            if (auto itr = userObjects.find(key); itr != userObjects.end())
+                return itr->second.get();
+            else
+                return nullptr;
+        }
+
+        const Object* getObject(const std::string& key) const
+        {
+            if (auto itr = userObjects.find(key); itr != userObjects.end())
+                return itr->second.get();
+            else
+                return nullptr;
+        }
+
+        ref_ptr<Object> getRefObject(const std::string& key)
+        {
+            if (auto itr = userObjects.find(key); itr != userObjects.end())
+                return itr->second;
+            else
+                return {};
+        }
+
+        ref_ptr<const Object> getRefObject(const std::string& key) const
+        {
+            if (auto itr = userObjects.find(key); itr != userObjects.end())
+                return itr->second;
+            else
+                return {};
+        }
 
         using ObjectMap = std::map<std::string, vsg::ref_ptr<Object>>;
-        ObjectMap& getObjectMap() { return _objectMap; }
-        const ObjectMap& getObjectMap() const { return _objectMap; }
 
-        void setAllocator(Allocator* allocator) { _allocator = allocator; }
-        Allocator* getAllocator() { return _allocator; }
+        /// container for all user objects
+        ObjectMap userObjects;
 
     protected:
-        explicit Auxiliary(Allocator* allocator);
-        explicit Auxiliary(Object* object, Allocator* allocator = nullptr);
+        explicit Auxiliary(Object* object);
 
         virtual ~Auxiliary();
 
@@ -67,9 +99,6 @@ namespace vsg
 
         mutable std::mutex _mutex;
         Object* _connectedObject;
-
-        ref_ptr<Allocator> _allocator;
-        ObjectMap _objectMap;
     };
 
 } // namespace vsg

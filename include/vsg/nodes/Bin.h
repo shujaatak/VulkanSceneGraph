@@ -18,6 +18,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// Bin node is used internally by RecoredTraversal/View to collect and then sort command nodes assigned the bin,
+    /// then recorded to the command buffer in the sorted order.
     class VSG_DECLSPEC Bin : public Inherit<Node, Bin>
     {
     public:
@@ -28,8 +30,8 @@ namespace vsg
             DESCENDING
         };
 
-        Bin(Allocator* allocator = nullptr);
-        Bin(int32_t in_binNumber, SortOrder in_sortOrder, Allocator* allocator = nullptr);
+        Bin();
+        Bin(int32_t in_binNumber, SortOrder in_sortOrder);
 
         void traverse(RecordTraversal& visitor) const override;
 

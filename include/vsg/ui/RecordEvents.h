@@ -17,11 +17,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/ui/PointerEvent.h>
 #include <vsg/ui/ScrollWheelEvent.h>
 
-#include <iostream>
-
 namespace vsg
 {
 
+    /// RecordEvents is a event recording class that can be assigned to a viewer as an event handler.
+    /// Can be used in conjunction with vsg::PlayEvents to replay recorded events.
+    /// See vsginput example to see how it's used.
     class VSG_DECLSPEC RecordEvents : public vsg::Inherit<vsg::Visitor, RecordEvents>
     {
     public:
@@ -29,5 +30,6 @@ namespace vsg
 
         void apply(vsg::UIEvent& event) override;
     };
+    VSG_type_name(vsg::RecordEvents);
 
 } // namespace vsg

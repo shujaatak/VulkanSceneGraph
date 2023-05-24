@@ -22,28 +22,6 @@ namespace vsg
     // forward declare
     class Context;
 
-    template<typename T>
-    bool readFile(T& buffer, const std::string& filename)
-    {
-        std::ifstream fin(filename, std::ios::ate | std::ios::binary);
-        if (!fin.is_open()) return false;
-
-        size_t fileSize = fin.tellg();
-
-        using value_type = typename T::value_type;
-        size_t valueSize = sizeof(value_type);
-        size_t bufferSize = (fileSize + valueSize - 1) / valueSize;
-        buffer.resize(bufferSize);
-
-        fin.seekg(0);
-        fin.read(reinterpret_cast<char*>(buffer.data()), fileSize);
-        fin.close();
-
-        // buffer.size() * valueSize
-
-        return true;
-    }
-
     /// Settings passed to glsLang when compiling GLSL/HLSL shader source to SPIR-V
     /// Provides the values to pass to glsLang::TShader::setEnvInput, setEnvClient and setEnvTarget.
     class VSG_DECLSPEC ShaderCompileSettings : public Inherit<Object, ShaderCompileSettings>
@@ -71,13 +49,19 @@ namespace vsg
         int defaultVersion = 450;
         SpirvTarget target = SPIRV_1_0;
         bool forwardCompatible = false;
-        std::vector<std::string> defines;
+        bool generateDebugInfo = false; // maps to SpvOptions::generateDebugInfo
+
+        std::set<std::string> defines;
+
+        int compare(const Object& rhs_object) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;
     };
     VSG_type_name(vsg::ShaderCompileSettings);
 
+    /// ShaderModule encapsulates the VkShaderModule and the VkShaderModuleCreateInfo settings used to set it up.
+    /// ShaderModule are assigned to ShaderStage, which are assigned to GraphicsPipeline/ComputePipeline etc.
     class VSG_DECLSPEC ShaderModule : public Inherit<Object, ShaderModule>
     {
     public:
@@ -96,6 +80,8 @@ namespace vsg
 
         /// Vulkan VkShaderModule handle
         VkShaderModule vk(uint32_t deviceID) const { return _implementation[deviceID]->_shaderModule; }
+
+        int compare(const Object& rhs_object) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;

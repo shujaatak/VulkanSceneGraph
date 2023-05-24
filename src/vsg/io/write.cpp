@@ -10,9 +10,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/io/ObjectCache.h>
 #include <vsg/io/VSG.h>
+#include <vsg/io/glsl.h>
+#include <vsg/io/spirv.h>
 #include <vsg/io/write.h>
+#include <vsg/utils/SharedObjects.h>
 
 using namespace vsg;
 
@@ -22,7 +24,7 @@ bool vsg::write(ref_ptr<Object> object, const Path& filename, ref_ptr<const Opti
     if (options)
     {
         // don't write the file if it's already contained in the ObjectCache
-        if (options->objectCache && options->objectCache->contains(filename, options)) return true;
+        if (options->sharedObjects && options->sharedObjects->contains(filename, options)) return true;
 
         if (!options->readerWriters.empty())
         {
@@ -43,11 +45,21 @@ bool vsg::write(ref_ptr<Object> object, const Path& filename, ref_ptr<const Opti
             VSG rw;
             fileWritten = rw.write(object, filename, options);
         }
+        else if (ext == ".spv")
+        {
+            spirv rw;
+            fileWritten = rw.write(object, filename, options);
+        }
+        else if (glsl::extensionSupported(ext))
+        {
+            glsl rw;
+            fileWritten = rw.write(object, filename, options);
+        }
     }
 
-    if (fileWritten && options && options->objectCache)
+    if (fileWritten && options && options->sharedObjects)
     {
-        options->objectCache->add(object, filename, options);
+        options->sharedObjects->add(object, filename, options);
     }
 
     return fileWritten;

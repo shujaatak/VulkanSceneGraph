@@ -12,11 +12,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/nodes/Node.h>
-
 #include <vsg/io/FileSystem.h>
 #include <vsg/io/Options.h>
-
+#include <vsg/nodes/Node.h>
 #include <vsg/vk/Semaphore.h>
 
 #include <array>
@@ -37,7 +35,7 @@ namespace vsg
     class VSG_DECLSPEC PagedLOD : public Inherit<Node, PagedLOD>
     {
     public:
-        PagedLOD(Allocator* allocator = nullptr);
+        PagedLOD();
 
         template<class N, class V>
         static void t_traverse(N& node, V& visitor)
@@ -59,7 +57,6 @@ namespace vsg
         {
             double minimumScreenHeightRatio = 0.0; // 0.0 is always visible
             ref_ptr<Node> node;
-            // TODO need a record of the last time traversed
         };
 
         // external file to load when child 0 is null.
@@ -68,23 +65,21 @@ namespace vsg
         // priority value assigned by record traversal as a guide to how important the external child is for loading.
         mutable std::atomic<double> priority{0.0};
 
-        // TODO need status of external file load
-
         dsphere bound;
 
         using Children = std::array<Child, 2>;
         Children children;
 
-        bool highResActive(uint64_t frameCount) const
+        bool highResActive(uint64_t frameCount, uint64_t inactiveAge = 3) const
         {
-            return (frameCount - frameHighResLastUsed.load()) <= 1;
+            return (frameCount - frameHighResLastUsed.load()) <= inactiveAge;
         }
 
     protected:
         virtual ~PagedLOD();
 
     public:
-        ref_ptr<const Options> options;
+        ref_ptr<Options> options;
 
         mutable std::atomic_uint64_t frameHighResLastUsed{0};
         mutable std::atomic_uint requestCount{0};
@@ -94,19 +89,17 @@ namespace vsg
             NoRequest = 0,
             ReadRequest = 1,
             Reading = 2,
-            CompileRequest = 3,
-            Compiling = 4,
-            MergeRequest = 5,
-            Merging = 6,
-            DeleteRequest = 7,
-            Deleting = 8
+            Compiling = 3,
+            MergeRequest = 4,
+            Merging = 5,
+            DeleteRequest = 6,
+            Deleting = 7
         };
 
         mutable std::atomic<RequestStatus> requestStatus{NoRequest};
         mutable uint32_t index = 0;
 
         ref_ptr<Node> pending;
-        ref_ptr<Semaphore> semaphore;
     };
     VSG_type_name(vsg::PagedLOD);
 
@@ -127,7 +120,7 @@ namespace vsg
             uint32_t previous = 0;
             uint32_t next = 0;
             ref_ptr<PagedLOD> plod;
-            List* list = 0;
+            List* list = nullptr;
         };
 
         using Elements = std::vector<Element>;

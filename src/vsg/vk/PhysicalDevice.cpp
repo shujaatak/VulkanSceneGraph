@@ -11,6 +11,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/core/Exception.h>
+#include <vsg/io/Logger.h>
 #include <vsg/io/Options.h>
 #include <vsg/vk/PhysicalDevice.h>
 
@@ -27,8 +28,12 @@ PhysicalDevice::PhysicalDevice(Instance* instance, VkPhysicalDevice device) :
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(_device, &queueFamilyCount, nullptr);
 
-    _queueFamiles.resize(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(_device, &queueFamilyCount, _queueFamiles.data());
+    _queueFamilies.resize(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(_device, &queueFamilyCount, _queueFamilies.data());
+
+    /// get function pointers
+    instance->getProcAddr(_vkGetPhysicalDeviceFeatures2, "vkGetPhysicalDeviceFeatures2", "vkGetPhysicalDeviceFeatures2KHR");
+    instance->getProcAddr(_vkGetPhysicalDeviceProperties2, "vkGetPhysicalDeviceProperties2", "vkGetPhysicalDeviceProperties2KHR");
 }
 
 PhysicalDevice::~PhysicalDevice()
@@ -39,9 +44,9 @@ int PhysicalDevice::getQueueFamily(VkQueueFlags queueFlags) const
 {
     int bestFamily = -1;
 
-    for (int i = 0; i < static_cast<int>(_queueFamiles.size()); ++i)
+    for (int i = 0; i < static_cast<int>(_queueFamilies.size()); ++i)
     {
-        const auto& queueFamily = _queueFamiles[i];
+        const auto& queueFamily = _queueFamilies[i];
         if ((queueFamily.queueFlags & queueFlags) == queueFlags)
         {
             // check for perfect match
@@ -54,6 +59,11 @@ int PhysicalDevice::getQueueFamily(VkQueueFlags queueFlags) const
         }
     }
 
+    if (bestFamily < 0 && queueFlags == VK_QUEUE_TRANSFER_BIT)
+    {
+        return getQueueFamily(VK_QUEUE_GRAPHICS_BIT);
+    }
+
     return bestFamily;
 }
 
@@ -62,9 +72,9 @@ std::pair<int, int> PhysicalDevice::getQueueFamily(VkQueueFlags queueFlags, Surf
     int queueFamily = -1;
     int presentFamily = -1;
 
-    for (int i = 0; i < static_cast<int>(_queueFamiles.size()); ++i)
+    for (int i = 0; i < static_cast<int>(_queueFamilies.size()); ++i)
     {
-        const auto& family = _queueFamiles[i];
+        const auto& family = _queueFamilies[i];
 
         bool queueMatched = (family.queueFlags & queueFlags) == queueFlags;
 
@@ -89,7 +99,18 @@ std::vector<VkExtensionProperties> PhysicalDevice::enumerateDeviceExtensionPrope
     vkEnumerateDeviceExtensionProperties(_device, pLayerName, &propertyCount, nullptr);
     if (propertyCount == 0) return {};
 
-    std::vector<VkExtensionProperties> extensionPropeties(propertyCount);
-    vkEnumerateDeviceExtensionProperties(_device, pLayerName, &propertyCount, extensionPropeties.data());
-    return extensionPropeties;
+    std::vector<VkExtensionProperties> extensionProperties(propertyCount);
+    vkEnumerateDeviceExtensionProperties(_device, pLayerName, &propertyCount, extensionProperties.data());
+    return extensionProperties;
+}
+
+bool PhysicalDevice::supportsDeviceExtension(const char* extensionName)
+{
+    auto extensionProperties = enumerateDeviceExtensionProperties();
+    for (auto& extensionProperty : extensionProperties)
+    {
+        if (std::strncmp(extensionProperty.extensionName, extensionName, VK_MAX_EXTENSION_NAME_SIZE) == 0)
+            return true;
+    }
+    return false;
 }

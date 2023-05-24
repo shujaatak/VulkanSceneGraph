@@ -30,6 +30,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 namespace vsg
 {
 
+    /// ReaderWriter for reading and writing spirv shader files.
     class VSG_DECLSPEC spirv : public Inherit<ReaderWriter, spirv>
     {
     public:
@@ -37,11 +38,12 @@ namespace vsg
 
         ref_ptr<Object> read(const Path& filename, ref_ptr<const Options> options = {}) const override;
 
+        ref_ptr<vsg::Object> read(std::istream& fin, ref_ptr<const Options> options = {}) const override;
+        ref_ptr<vsg::Object> read(const uint8_t* ptr, size_t size, ref_ptr<const Options> = {}) const override;
+
         bool write(const Object* object, const Path& filename, ref_ptr<const Options> options = {}) const override;
 
         bool getFeatures(Features& features) const override;
-
-    protected:
     };
     VSG_type_name(vsg::spirv);
 

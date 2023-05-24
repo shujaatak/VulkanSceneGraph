@@ -20,6 +20,7 @@ namespace vsg
     // forward declare
     class Context;
 
+    /// Image class encapsulates VkImage and VkImageCreateInfo settings used to it up.
     class VSG_DECLSPEC Image : public Inherit<Object, Image>
     {
     public:
@@ -28,6 +29,9 @@ namespace vsg
 
         /// create a vsg::Image wrapper for specified VkImage
         Image(VkImage image, Device* device);
+
+        /// Vulkan VkImage handle
+        VkImage vk(uint32_t deviceID) const { return _vulkanData[deviceID].image; }
 
         /// VkImageCreateInfo settings
         ref_ptr<Data> data;
@@ -44,8 +48,7 @@ namespace vsg
         std::vector<uint32_t> queueFamilyIndices;
         VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        /// Vulkan VkImage handle
-        VkImage vk(uint32_t deviceID) const { return _vulkanData[deviceID].image; }
+        int compare(const Object& rhs_object) const override;
 
         DeviceMemory* getDeviceMemory(uint32_t deviceID) { return _vulkanData[deviceID].deviceMemory; }
         const DeviceMemory* getDeviceMemory(uint32_t deviceID) const { return _vulkanData[deviceID].deviceMemory; }
@@ -53,6 +56,8 @@ namespace vsg
         VkDeviceSize getMemoryOffset(uint32_t deviceID) const { return _vulkanData[deviceID].memoryOffset; }
 
         VkMemoryRequirements getMemoryRequirements(uint32_t deviceID) const;
+
+        VkResult allocateAndBindMemory(Device* device, VkMemoryPropertyFlags memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, void* pNextAllocInfo = nullptr);
 
         VkResult bind(DeviceMemory* deviceMemory, VkDeviceSize memoryOffset);
 

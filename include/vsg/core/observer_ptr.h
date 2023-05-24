@@ -17,10 +17,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// weak smart pointer that works in conjunction with vsg::ref_ptr<> and vsg::Object/vsg::Auxiliary to
+    /// provide broadly similar functionality to std::weak_ptr<>.
     template<class T>
     class observer_ptr
     {
     public:
+        using element_type = T;
+
         observer_ptr() :
             _ptr(nullptr) {}
 
@@ -33,7 +37,7 @@ namespace vsg
         template<class R>
         explicit observer_ptr(R* ptr) :
             _ptr(ptr),
-            _auxiliary(ptr ? ptr->getOrCreateUniqueAuxiliary() : nullptr)
+            _auxiliary(ptr ? ptr->getOrCreateAuxiliary() : nullptr)
         {
         }
 
@@ -45,9 +49,9 @@ namespace vsg
         }
 
         template<class R>
-        explicit observer_ptr(const ref_ptr<R>& ptr) :
+        explicit observer_ptr(const vsg::ref_ptr<R>& ptr) :
             _ptr(ptr.get()),
-            _auxiliary(ptr.valid() ? ptr->getOrCreateUniqueAuxiliary() : nullptr)
+            _auxiliary(ptr.valid() ? ptr->getOrCreateAuxiliary() : nullptr)
         {
         }
 
@@ -55,11 +59,17 @@ namespace vsg
         {
         }
 
+        void reset()
+        {
+            _ptr = nullptr;
+            _auxiliary.reset();
+        }
+
         template<class R>
         observer_ptr& operator=(R* ptr)
         {
             _ptr = ptr;
-            _auxiliary = ptr ? ptr->getOrCreateUniqueAuxiliary() : nullptr;
+            _auxiliary = ptr ? ptr->getOrCreateAuxiliary() : nullptr;
             return *this;
         }
 
@@ -79,10 +89,10 @@ namespace vsg
         }
 
         template<class R>
-        observer_ptr& operator=(const ref_ptr<R>& rhs)
+        observer_ptr& operator=(const vsg::ref_ptr<R>& rhs)
         {
             _ptr = rhs.get();
-            _auxiliary = rhs.valid() ? rhs->getOrCreateUniqueAuxiliary() : nullptr;
+            _auxiliary = rhs.valid() ? rhs->getOrCreateAuxiliary() : nullptr;
             return *this;
         }
 
@@ -109,14 +119,17 @@ namespace vsg
         explicit operator bool() const noexcept { return valid(); }
 
         /// convert observer_ptr into a ref_ptr so that Object that pointed to can be safely accessed.
+        vsg::ref_ptr<T> ref_ptr() const { return vsg::ref_ptr<T>(*this); }
+
+        /// convert observer_ptr into a ref_ptr so that Object that pointed to can be safely accessed.
         template<class R>
-        operator ref_ptr<R>() const
+        operator vsg::ref_ptr<R>() const
         {
-            if (!_auxiliary) return ref_ptr<R>();
+            if (!_auxiliary) return vsg::ref_ptr<R>();
 
             std::scoped_lock<std::mutex> guard(_auxiliary->getMutex());
             if (_auxiliary->getConnectedObject() != nullptr)
-                return ref_ptr<R>(_ptr);
+                return vsg::ref_ptr<R>(_ptr);
             else
                 return {};
         }
@@ -126,7 +139,7 @@ namespace vsg
         friend class observer_ptr;
 
         T* _ptr;
-        ref_ptr<Auxiliary> _auxiliary;
+        vsg::ref_ptr<Auxiliary> _auxiliary;
     };
 
 } // namespace vsg

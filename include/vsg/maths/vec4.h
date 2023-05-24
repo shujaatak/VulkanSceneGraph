@@ -28,6 +28,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// t_vec4 template class that a represents a 4D vector
     template<typename T>
     struct t_vec4
     {
@@ -48,6 +49,7 @@ namespace vsg
             {
                 value_type s, t, p, q;
             };
+            t_vec3<T> xyz;
         };
 
         constexpr t_vec4() :
@@ -55,16 +57,21 @@ namespace vsg
         constexpr t_vec4(const t_vec4& v) :
             value{v.x, v.y, v.z, v.w} {}
         constexpr t_vec4& operator=(const t_vec4&) = default;
+
         constexpr t_vec4(value_type in_x, value_type in_y, value_type in_z, value_type in_w) :
             value{in_x, in_y, in_z, in_w} {}
-        constexpr t_vec4(const t_vec2<T>& v, value_type in_z, value_type in_w) :
-            value{v.x, v.y, in_z, in_w} {}
-        constexpr t_vec4(const t_vec3<T>& v, value_type in_w) :
-            value{v.x, v.y, v.z, in_w} {}
 
         template<typename R>
         constexpr explicit t_vec4(const t_vec4<R>& v) :
             value{static_cast<T>(v.x), static_cast<T>(v.y), static_cast<T>(v.z), static_cast<T>(v.w)} {}
+
+        template<typename R>
+        constexpr t_vec4(const t_vec2<R>& v, value_type in_z, value_type in_w) :
+            value{static_cast<T>(v.x), static_cast<T>(v.y), in_z, in_w} {}
+
+        template<typename R>
+        constexpr t_vec4(const t_vec3<R>& v, value_type in_w) :
+            value{static_cast<T>(v.x), static_cast<T>(v.y), static_cast<T>(v.z), in_w} {}
 
         constexpr std::size_t size() const { return 4; }
 
@@ -147,16 +154,18 @@ namespace vsg
             }
             return *this;
         }
+
+        explicit operator bool() const noexcept { return value[0] != 0.0 || value[1] != 0.0 || value[2] != 0.0 || value[3] != 0.0; }
     };
 
-    using vec4 = t_vec4<float>;
-    using dvec4 = t_vec4<double>;
-    using bvec4 = t_vec4<std::int8_t>;
-    using svec4 = t_vec4<std::int16_t>;
-    using ivec4 = t_vec4<std::int32_t>;
-    using ubvec4 = t_vec4<std::uint8_t>;
-    using usvec4 = t_vec4<std::uint16_t>;
-    using uivec4 = t_vec4<std::uint32_t>;
+    using vec4 = t_vec4<float>;           // float 4D vector
+    using dvec4 = t_vec4<double>;         // double 4D vector
+    using bvec4 = t_vec4<std::int8_t>;    // signed 8 bit integer 4D vector
+    using svec4 = t_vec4<std::int16_t>;   //  signed 16 bit integer 4D vector
+    using ivec4 = t_vec4<std::int32_t>;   //  signed 32 bit integer 4D vector
+    using ubvec4 = t_vec4<std::uint8_t>;  //  unsigned 8 bit integer 4D vector
+    using usvec4 = t_vec4<std::uint16_t>; //  unsigned 16 bit integer 4D vector
+    using uivec4 = t_vec4<std::uint32_t>; //  unsigned 32 bit integer 4D vector
 
     VSG_type_name(vsg::vec4);
     VSG_type_name(vsg::dvec4);

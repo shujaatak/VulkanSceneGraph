@@ -14,8 +14,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/commands/BindVertexBuffers.h>
 #include <vsg/commands/Commands.h>
 #include <vsg/commands/DrawIndexed.h>
+#include <vsg/io/Logger.h>
 #include <vsg/io/read.h>
 #include <vsg/io/write.h>
+#include <vsg/state/BindDescriptorSet.h>
 #include <vsg/state/ColorBlendState.h>
 #include <vsg/state/DepthStencilState.h>
 #include <vsg/state/DescriptorImage.h>
@@ -26,110 +28,77 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/text/CpuLayoutTechnique.h>
 #include <vsg/text/StandardLayout.h>
 #include <vsg/text/Text.h>
-
-#include "shaders/text_frag.cpp"
-#include "shaders/text_vert.cpp"
-
-#include <iostream>
+#include <vsg/text/TextGroup.h>
+#include <vsg/utils/GraphicsPipelineConfigurator.h>
+#include <vsg/utils/SharedObjects.h>
 
 using namespace vsg;
 
-CpuLayoutTechnique::RenderingState::RenderingState(Font* font, bool in_singleColor, bool in_singleOutlineColor, bool in_singleOutlineWidth) :
-    singleColor(in_singleColor),
-    singleOutlineColor(in_singleOutlineColor),
-    singleOutlineWidth(in_singleOutlineWidth)
+void CpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation, ref_ptr<const Options> options)
 {
-    // load shaders
-    auto vertexShader = read_cast<ShaderStage>("shaders/text.vert", font->options);
-    if (!vertexShader) vertexShader = text_vert(); // fallback to shaders/text_vert.cppp
+    if (!text || !(text->text) || !text->font || !text->layout) return;
 
-    auto fragmentShader = read_cast<ShaderStage>("shaders/text.frag", font->options);
-    if (!fragmentShader) fragmentShader = text_frag(); // fallback to shaders/text_frag.cppp
+    const auto& font = text->font;
+    auto& layout = text->layout;
+    auto shaderSet = text->shaderSet ? text->shaderSet : createTextShaderSet(options);
 
-    // compile section
-    ShaderStages stagesToCompile;
-    if (vertexShader && vertexShader->module && vertexShader->module->code.empty()) stagesToCompile.emplace_back(vertexShader);
-    if (fragmentShader && fragmentShader->module && fragmentShader->module->code.empty()) stagesToCompile.emplace_back(fragmentShader);
+    textExtents = layout->extents(text->text, *(text->font));
 
-    // set up graphics pipeline
-    DescriptorSetLayoutBindings descriptorBindings{
-        {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr} // { binding, descriptorTpe, descriptorCount, stageFlags, pImmutableSamplers}
-    };
-
-    auto descriptorSetLayout = DescriptorSetLayout::create(descriptorBindings);
-
-    PushConstantRanges pushConstantRanges{
-        {VK_SHADER_STAGE_VERTEX_BIT, 0, 128} // projection view, and model matrices, actual push constant calls automatically provided by the VSG's DispatchTraversal
-    };
-
-    VertexInputState::Bindings vertexBindingsDescriptions{
-        VkVertexInputBindingDescription{0, sizeof(vec3), VK_VERTEX_INPUT_RATE_VERTEX},                                                       // vertex data
-        VkVertexInputBindingDescription{1, sizeof(vec4), singleColor ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX},         // colour data
-        VkVertexInputBindingDescription{2, sizeof(vec4), singleOutlineColor ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX},  // outline colour data
-        VkVertexInputBindingDescription{3, sizeof(float), singleOutlineWidth ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX}, // outline width data
-        VkVertexInputBindingDescription{4, sizeof(vec3), VK_VERTEX_INPUT_RATE_VERTEX}                                                        // tex coord data
-    };
-
-    VertexInputState::Attributes vertexAttributeDescriptions{
-        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},    // vertex data
-        VkVertexInputAttributeDescription{1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0}, // colour data
-        VkVertexInputAttributeDescription{2, 2, VK_FORMAT_R32G32B32A32_SFLOAT, 0}, // outline colour data
-        VkVertexInputAttributeDescription{3, 3, VK_FORMAT_R32_SFLOAT, 0},          // outline width data
-        VkVertexInputAttributeDescription{4, 4, VK_FORMAT_R32G32B32_SFLOAT, 0},    // tex coord data
-    };
-
-    // alpha blending
-    VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
-    colorBlendAttachment.blendEnable = VK_TRUE;
-    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
-                                          VK_COLOR_COMPONENT_G_BIT |
-                                          VK_COLOR_COMPONENT_B_BIT |
-                                          VK_COLOR_COMPONENT_A_BIT;
-
-    colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-    colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-
-    auto blending = ColorBlendState::create(ColorBlendState::ColorBlendAttachments{colorBlendAttachment});
-
-    // switch off back face culling
-    auto rasterization = RasterizationState::create();
-    rasterization->cullMode = VK_CULL_MODE_NONE;
-
-    GraphicsPipelineStates pipelineStates{
-        VertexInputState::create(vertexBindingsDescriptions, vertexAttributeDescriptions),
-        InputAssemblyState::create(),
-        MultisampleState::create(),
-        blending,
-        rasterization,
-        DepthStencilState::create()};
-
-    auto pipelineLayout = PipelineLayout::create(DescriptorSetLayouts{descriptorSetLayout}, pushConstantRanges);
-    auto graphicsPipeline = GraphicsPipeline::create(pipelineLayout, ShaderStages{vertexShader, fragmentShader}, pipelineStates);
-    bindGraphicsPipeline = BindGraphicsPipeline::create(graphicsPipeline);
-
-    // create texture image and associated DescriptorSets and binding
-    auto fontState = font->getShared<Font::FontState>();
-    auto descriptorSet = DescriptorSet::create(descriptorSetLayout, Descriptors{fontState->textureAtlas});
-    bindDescriptorSet = BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, descriptorSet);
-}
-
-void CpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
-{
-    auto layout = text->layout;
+    auto num_quads = vsg::visit<CountGlyphs>(text->text).count;
 
     TextQuads quads;
-    layout->layout(text->text, *(text->font), quads);
+    quads.reserve(num_quads);
+    layout->layout(text->text, *font, quads);
+
+    scenegraph = createRenderingSubgraph(shaderSet, font, layout->requiresBillboard(), quads, minimumAllocation);
+}
+
+void CpuLayoutTechnique::setup(TextGroup* textGroup, uint32_t minimumAllocation, ref_ptr<const Options> options)
+{
+    if (!textGroup || textGroup->children.empty()) return;
+
+    const auto& font = textGroup->font;
+    auto shaderSet = textGroup->shaderSet ? textGroup->shaderSet : createTextShaderSet(options);
+
+    auto& first_text = textGroup->children.front();
+    auto& layout = first_text->layout;
+    bool requiresBillboard = layout && layout->requiresBillboard();
+
+    textExtents = {};
+    CountGlyphs countGlyphs;
+    for (auto& text : textGroup->children)
+    {
+        if (text->text && text->layout)
+        {
+            text->text->accept(countGlyphs);
+            textExtents.add(text->layout->extents(text->text, *(font)));
+        }
+    }
+
+    TextQuads quads;
+    quads.reserve(countGlyphs.count);
+    for (auto& text : textGroup->children)
+    {
+        if (text->text && text->layout) text->layout->layout(text->text, *font, quads);
+    }
+
+    scenegraph = createRenderingSubgraph(shaderSet, font, requiresBillboard, quads, minimumAllocation);
+}
+
+ref_ptr<Node> CpuLayoutTechnique::createRenderingSubgraph(ref_ptr<ShaderSet> shaderSet, ref_ptr<Font> font, bool billboard, TextQuads& quads, uint32_t minimumAllocation)
+{
+    if (quads.empty()) return {};
+
+    ref_ptr<StateGroup> stategroup;
 
     vec4 color = quads.front().colors[0];
     vec4 outlineColor = quads.front().outlineColors[0];
     float outlineWidth = quads.front().outlineWidths[0];
+    vec4 centerAndAutoScaleDistance = quads.front().centerAndAutoScaleDistance;
     bool singleColor = true;
     bool singleOutlineColor = true;
     bool singleOutlineWidth = true;
+    bool singleCenterAutoScaleDistance = true;
     for (auto& quad : quads)
     {
         for (int i = 0; i < 4; ++i)
@@ -138,6 +107,7 @@ void CpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
             if (quad.outlineColors[i] != outlineColor) singleOutlineColor = false;
             if (quad.outlineWidths[i] != outlineWidth) singleOutlineWidth = false;
         }
+        if (quad.centerAndAutoScaleDistance != centerAndAutoScaleDistance) singleCenterAutoScaleDistance = false;
     }
 
     uint32_t num_quads = std::max(static_cast<uint32_t>(quads.size()), minimumAllocation);
@@ -145,12 +115,14 @@ void CpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
     uint32_t num_colors = singleColor ? 1 : num_vertices;
     uint32_t num_outlineColors = singleOutlineColor ? 1 : num_vertices;
     uint32_t num_outlineWidths = singleOutlineWidth ? 1 : num_vertices;
+    uint32_t num_centerAndAutoScaleDistances = billboard ? (singleCenterAutoScaleDistance ? 1 : num_vertices) : 0;
 
     if (!vertices || num_vertices > vertices->size()) vertices = vec3Array::create(num_vertices);
     if (!colors || num_colors > colors->size()) colors = vec4Array::create(num_colors);
     if (!outlineColors || num_outlineColors > outlineColors->size()) outlineColors = vec4Array::create(num_outlineColors);
     if (!outlineWidths || num_outlineWidths > outlineWidths->size()) outlineWidths = floatArray::create(num_outlineWidths);
     if (!texcoords || num_vertices > texcoords->size()) texcoords = vec3Array::create(num_vertices);
+    if (billboard && (!centerAndAutoScaleDistances || num_centerAndAutoScaleDistances > centerAndAutoScaleDistances->size())) centerAndAutoScaleDistances = vec4Array::create(num_centerAndAutoScaleDistances);
 
     uint32_t vi = 0;
 
@@ -159,6 +131,7 @@ void CpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
     if (singleColor) colors->set(0, color);
     if (singleOutlineColor) outlineColors->set(0, outlineColor);
     if (singleOutlineWidth) outlineWidths->set(0, outlineWidth);
+    if (singleCenterAutoScaleDistance && centerAndAutoScaleDistances) centerAndAutoScaleDistances->set(0, centerAndAutoScaleDistance);
 
     for (auto& quad : quads)
     {
@@ -198,6 +171,14 @@ void CpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
         texcoords->set(vi + 1, vec3(quad.texcoords[1].x, quad.texcoords[1].y, topEdgeTilt));
         texcoords->set(vi + 2, vec3(quad.texcoords[2].x, quad.texcoords[2].y, 0.0f));
         texcoords->set(vi + 3, vec3(quad.texcoords[3].x, quad.texcoords[3].y, leadingEdgeTilt));
+
+        if (!singleCenterAutoScaleDistance && centerAndAutoScaleDistances)
+        {
+            centerAndAutoScaleDistances->set(vi, quad.centerAndAutoScaleDistance);
+            centerAndAutoScaleDistances->set(vi + 1, quad.centerAndAutoScaleDistance);
+            centerAndAutoScaleDistances->set(vi + 2, quad.centerAndAutoScaleDistance);
+            centerAndAutoScaleDistances->set(vi + 3, quad.centerAndAutoScaleDistance);
+        }
 
         vi += 4;
     }
@@ -251,17 +232,83 @@ void CpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
         drawIndexed->indexCount = static_cast<uint32_t>(quads.size() * 6);
 
     // create StateGroup as the root of the scene/command graph to hold the GraphicsProgram, and binding of Descriptors to decorate the whole graph
-    if (!scenegraph)
+    if (!stategroup)
     {
-        scenegraph = StateGroup::create();
+        stategroup = StateGroup::create();
 
-        // set up state related objects if they haven't already been assigned
-        if (!sharedRenderingState) sharedRenderingState = text->font->getShared<RenderingState>(singleColor, singleOutlineColor, singleOutlineWidth);
+        auto config = vsg::GraphicsPipelineConfigurator::create(shaderSet);
 
-        if (sharedRenderingState->bindGraphicsPipeline) scenegraph->add(sharedRenderingState->bindGraphicsPipeline);
-        if (sharedRenderingState->bindDescriptorSet) scenegraph->add(sharedRenderingState->bindDescriptorSet);
+        auto& sharedObjects = font->sharedObjects;
+        if (!sharedObjects) sharedObjects = SharedObjects::create();
 
-        bindVertexBuffers = BindVertexBuffers::create(0, DataList{vertices, colors, outlineColors, outlineWidths, texcoords});
+        DataList arrays;
+        config->assignArray(arrays, "inPosition", VK_VERTEX_INPUT_RATE_VERTEX, vertices);
+        config->assignArray(arrays, "inColor", singleColor ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX, colors);
+        config->assignArray(arrays, "inOutlineColor", singleOutlineColor ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX, outlineColors);
+        config->assignArray(arrays, "inOutlineWidth", singleOutlineWidth ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX, outlineWidths);
+        config->assignArray(arrays, "inTexCoord", VK_VERTEX_INPUT_RATE_VERTEX, texcoords);
+
+        if (centerAndAutoScaleDistances)
+        {
+            config->assignArray(arrays, "inCenterAndAutoScaleDistance", singleCenterAutoScaleDistance ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX, centerAndAutoScaleDistances);
+        }
+
+        // set up sampler for atlas.
+        auto sampler = Sampler::create();
+        sampler->magFilter = VK_FILTER_LINEAR;
+        sampler->minFilter = VK_FILTER_LINEAR;
+        sampler->mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        sampler->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler->addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler->borderColor = VK_BORDER_COLOR_INT_TRANSPARENT_BLACK;
+        sampler->anisotropyEnable = VK_TRUE;
+        sampler->maxAnisotropy = 16.0f;
+        sampler->maxLod = 12.0;
+
+        if (sharedObjects) sharedObjects->share(sampler);
+
+        Descriptors descriptors;
+        config->assignTexture(descriptors, "textureAtlas", font->atlas, sampler);
+        if (sharedObjects) sharedObjects->share(descriptors);
+
+        // disable face culling so text can be seen from both sides
+        config->rasterizationState->cullMode = VK_CULL_MODE_NONE;
+
+        // set alpha blending
+        VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
+        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
+                                              VK_COLOR_COMPONENT_G_BIT |
+                                              VK_COLOR_COMPONENT_B_BIT |
+                                              VK_COLOR_COMPONENT_A_BIT;
+
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+        config->colorBlendState->attachments = {colorBlendAttachment};
+
+        if (sharedObjects)
+            sharedObjects->share(config, [](auto gpc) { gpc->init(); });
+        else
+            config->init();
+
+        stategroup->add(config->bindGraphicsPipeline);
+
+        auto descriptorSetLayout = vsg::DescriptorSetLayout::create(config->descriptorBindings);
+        if (sharedObjects) sharedObjects->share(descriptorSetLayout);
+        auto descriptorSet = vsg::DescriptorSet::create(descriptorSetLayout, descriptors);
+
+        auto bindDescriptorSet = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, config->layout, 0, descriptorSet);
+        if (sharedObjects) sharedObjects->share(bindDescriptorSet);
+
+        stategroup->add(bindDescriptorSet);
+
+        bindVertexBuffers = BindVertexBuffers::create(0, arrays);
         bindIndexBuffer = BindIndexBuffer::create(indices);
 
         // setup geometry
@@ -270,12 +317,14 @@ void CpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
         drawCommands->addChild(bindIndexBuffer);
         drawCommands->addChild(drawIndexed);
 
-        scenegraph->addChild(drawCommands);
+        stategroup->addChild(drawCommands);
     }
     else
     {
-        std::cout << "TODO : CpuLayoutTechnique::setup(), does not yet support updates. Consider using GpuLayoutTechnique instead." << std::endl;
+        info("TODO : CpuLayoutTechnique::setup(), does not yet support updates. Consider using GpuLayoutTechnique instead.");
         // bindVertexBuffers->copyDataToBuffers();
         // bindIndexBuffer->copyDataToBuffers();
     }
+
+    return stategroup;
 }

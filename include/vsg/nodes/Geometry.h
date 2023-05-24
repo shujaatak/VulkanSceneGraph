@@ -12,19 +12,24 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/nodes/Node.h>
-
 #include <vsg/commands/Draw.h>
-
-#include <vsg/traversals/CompileTraversal.h>
+#include <vsg/nodes/Node.h>
+#include <vsg/state/BufferInfo.h>
 
 namespace vsg
 {
 
+    /// Geometry node is class that provides vertex arrays, optional index array and a list of draw commands
+    /// that are recorded to command buffer during RecordTraversal. Provides a lower CPU overhead
+    /// compared to the equivalent functionality of adding individual commands:
+    ///     auto group = vsg::Commands::create();
+    ///     group->addChild(vsg::BindVertexBuffers::create(arrays));
+    ///     group->addChild(vsg::BindIndexBuffer::create(indices));
+    ///     group->addChild(vsg::DrawIndexed(number_vertices, 1, 0, 0));
     class VSG_DECLSPEC Geometry : public Inherit<Command, Geometry>
     {
     public:
-        Geometry(Allocator* allocator = nullptr);
+        Geometry();
 
         void read(Input& input) override;
         void write(Output& output) const override;
@@ -46,13 +51,7 @@ namespace vsg
     protected:
         virtual ~Geometry();
 
-        struct VulkanData
-        {
-            std::vector<VkBuffer> vkBuffers;
-            std::vector<VkDeviceSize> offsets;
-        };
-
-        vk_buffer<VulkanData> _vulkanData;
+        vk_buffer<VulkanArrayData> _vulkanData;
         VkIndexType indexType = VK_INDEX_TYPE_UINT16;
     };
     VSG_type_name(vsg::Geometry)

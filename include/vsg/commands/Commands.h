@@ -22,11 +22,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// Commands is a command that acts as a container for other commands.
+    /// vsg::Commands is a functionally equivalent to use vsg::Group but is faster thanks to lowering CPU overhead in applying
+    /// the state stack prior to vsg::Command call.
     class VSG_DECLSPEC Commands : public Inherit<Command, Commands>
     {
     public:
         explicit Commands(size_t numChildren = 0);
-        explicit Commands(Allocator* allocator, size_t numChildren = 0);
 
         template<class N, class V>
         static void t_traverse(N& node, V& visitor)
@@ -37,6 +39,8 @@ namespace vsg
         void traverse(Visitor& visitor) override { t_traverse(*this, visitor); }
         void traverse(ConstVisitor& visitor) const override { t_traverse(*this, visitor); }
         void traverse(RecordTraversal& visitor) const override { t_traverse(*this, visitor); }
+
+        int compare(const Object& rhs) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;

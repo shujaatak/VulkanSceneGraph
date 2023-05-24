@@ -16,6 +16,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+
+    /// VertexInputState encapsulates to VkPipelineVertexInputStateCreateInfo settings passed when setting up GraphicsPipeline
     class VSG_DECLSPEC VertexInputState : public Inherit<GraphicsPipelineState, VertexInputState>
     {
     public:
@@ -23,14 +25,18 @@ namespace vsg
         using Attributes = std::vector<VkVertexInputAttributeDescription>;
 
         VertexInputState();
+        VertexInputState(const VertexInputState& vis);
         VertexInputState(const Bindings& bindings, const Attributes& attributes);
 
         /// VkPipelineVertexInputStateCreateInfo settings
         Bindings vertexBindingDescriptions;
         Attributes vertexAttributeDescriptions;
 
+        int compare(const Object& rhs) const override;
+
         void read(Input& input) override;
         void write(Output& output) const override;
+
         void apply(Context& context, VkGraphicsPipelineCreateInfo& pipelineInfo) const override;
 
     protected:

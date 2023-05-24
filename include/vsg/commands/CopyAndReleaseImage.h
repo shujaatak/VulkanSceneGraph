@@ -20,6 +20,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// Deprecated - use vsg::Data dataVariance and Data.dirty() to signal vsg::TransferData to transfer data.
     class VSG_DECLSPEC CopyAndReleaseImage : public Inherit<Command, CopyAndReleaseImage>
     {
     public:
@@ -35,7 +36,7 @@ namespace vsg
 
             uint32_t mipLevels = 1;
 
-            Data::Layout layout;
+            Data::Properties layout;
             uint32_t width = 0;
             uint32_t height = 0;
             uint32_t depth = 0;

@@ -19,6 +19,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// DrawIndexed command encapsulates vkCmdDrawIndexed call and associated settings
     class VSG_DECLSPEC DrawIndexed : public Inherit<Command, DrawIndexed>
     {
     public:
@@ -30,6 +31,8 @@ namespace vsg
             firstIndex(in_firstIndex),
             vertexOffset(in_vertexOffset),
             firstInstance(in_firstInstance) {}
+
+        int compare(const Object& rhs_object) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;

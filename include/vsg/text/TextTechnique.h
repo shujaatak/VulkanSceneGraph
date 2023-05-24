@@ -12,10 +12,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/nodes/Node.h>
-#include <vsg/text/Font.h>
-#include <vsg/text/TextLayout.h>
-#include <vsg/text/TextTechnique.h>
+#include <vsg/core/Inherit.h>
 
 namespace vsg
 {
@@ -27,7 +24,9 @@ namespace vsg
     class VSG_DECLSPEC TextTechnique : public Inherit<Object, TextTechnique>
     {
     public:
-        virtual void setup(Text* text, uint32_t minimumAllocation = 0) = 0;
+        virtual void setup(Text* text, uint32_t minimumAllocation = 0, ref_ptr<const Options> options = {}) = 0;
+        virtual void setup(TextGroup* text, uint32_t minimumAllocation = 0, ref_ptr<const Options> options = {}) = 0;
+        virtual dbox extents() const = 0;
     };
     VSG_type_name(vsg::TextTechnique);
 

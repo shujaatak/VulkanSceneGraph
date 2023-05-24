@@ -15,10 +15,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// smart pointer that works with objects that have intrusive reference counting, such as all vsg::Object
+    /// broadly similar in role to std::shared_ptr<> but half size and faster thanks to lower memory footprint and better cache coherency
     template<class T>
     class ref_ptr
     {
     public:
+        using element_type = T;
+
         ref_ptr() noexcept :
             _ptr(nullptr) {}
 
@@ -59,6 +63,12 @@ namespace vsg
         ~ref_ptr()
         {
             if (_ptr) _ptr->unref();
+        }
+
+        void reset()
+        {
+            if (_ptr) _ptr->unref();
+            _ptr = nullptr;
         }
 
         ref_ptr& operator=(T* ptr)
@@ -126,7 +136,7 @@ namespace vsg
         }
 
         template<class R>
-        bool operator<(const ref_ptr<R>& rhs) const { return (rhs._ptr < _ptr); }
+        bool operator<(const ref_ptr<R>& rhs) const { return (_ptr < rhs._ptr); }
 
         template<class R>
         bool operator==(const ref_ptr<R>& rhs) const { return (rhs._ptr == _ptr); }
@@ -135,7 +145,7 @@ namespace vsg
         bool operator!=(const ref_ptr<R>& rhs) const { return (rhs._ptr != _ptr); }
 
         template<class R>
-        bool operator<(const R* rhs) const { return (rhs < _ptr); }
+        bool operator<(const R* rhs) const { return (_ptr < rhs); }
 
         template<class R>
         bool operator==(const R* rhs) const { return (rhs == _ptr); }

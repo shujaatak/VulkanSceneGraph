@@ -14,8 +14,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/commands/Commands.h>
 #include <vsg/commands/Draw.h>
 #include <vsg/core/Array2D.h>
+#include <vsg/io/Logger.h>
 #include <vsg/io/read.h>
 #include <vsg/io/write.h>
+#include <vsg/state/BindDescriptorSet.h>
 #include <vsg/state/ColorBlendState.h>
 #include <vsg/state/DepthStencilState.h>
 #include <vsg/state/DescriptorImage.h>
@@ -26,101 +28,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/text/GpuLayoutTechnique.h>
 #include <vsg/text/StandardLayout.h>
 #include <vsg/text/Text.h>
-
-#include <iostream>
-
-#include "shaders/text_GpuLayout_vert.cpp"
-#include "shaders/text_frag.cpp"
+#include <vsg/utils/GraphicsPipelineConfigurator.h>
+#include <vsg/utils/ShaderSet.h>
+#include <vsg/utils/SharedObjects.h>
 
 using namespace vsg;
-
-GpuLayoutTechnique::GpuLayoutState::GpuLayoutState(Font* font)
-{
-    // load shaders
-    auto vertexShader = read_cast<ShaderStage>("shaders/text_GpuLayout.vert", font->options);
-    if (!vertexShader) vertexShader = text_GpuLayout_vert(); // fallback to shaders/text_GpuLayout_vert.cppp
-
-    auto fragmentShader = read_cast<ShaderStage>("shaders/text.frag", font->options);
-    if (!fragmentShader) fragmentShader = text_frag();
-
-    // compile section
-    ShaderStages stagesToCompile;
-    if (vertexShader && vertexShader->module && vertexShader->module->code.empty()) stagesToCompile.emplace_back(vertexShader);
-    if (fragmentShader && fragmentShader->module && fragmentShader->module->code.empty()) stagesToCompile.emplace_back(fragmentShader);
-
-    uint32_t numTextIndices = 256;
-    vertexShader->specializationConstants = vsg::ShaderStage::SpecializationConstants{
-        {0, vsg::uintValue::create(numTextIndices)} // numTextIndices
-    };
-
-    // Glyph
-    DescriptorSetLayoutBindings descriptorBindings{
-        {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}, // texture atlas
-        {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}    // glyph matrices
-    };
-
-    auto descriptorSetLayout = DescriptorSetLayout::create(descriptorBindings);
-
-    // set up graphics pipeline
-    DescriptorSetLayoutBindings textArrayDescriptorBindings{
-        {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}, // Layout uniform
-        {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}  // Text uniform
-    };
-
-    textArrayDescriptorSetLayout = DescriptorSetLayout::create(textArrayDescriptorBindings);
-
-    PushConstantRanges pushConstantRanges{
-        {VK_SHADER_STAGE_VERTEX_BIT, 0, 128} // projection view, and model matrices, actual push constant calls automatically provided by the VSG's DispatchTraversal
-    };
-
-    VertexInputState::Bindings vertexBindingsDescriptions{
-        VkVertexInputBindingDescription{0, sizeof(vec3), VK_VERTEX_INPUT_RATE_VERTEX}, // vertex data
-    };
-
-    VertexInputState::Attributes vertexAttributeDescriptions{
-        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0}, // vertex data
-    };
-
-    // alpha blending
-    VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
-    colorBlendAttachment.blendEnable = VK_TRUE;
-    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
-                                          VK_COLOR_COMPONENT_G_BIT |
-                                          VK_COLOR_COMPONENT_B_BIT |
-                                          VK_COLOR_COMPONENT_A_BIT;
-
-    colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-    colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-
-    auto blending = ColorBlendState::create(ColorBlendState::ColorBlendAttachments{colorBlendAttachment});
-
-    // switch off back face culling
-    auto rasterization = RasterizationState::create();
-    rasterization->cullMode = VK_CULL_MODE_NONE;
-
-    GraphicsPipelineStates pipelineStates{
-        VertexInputState::create(vertexBindingsDescriptions, vertexAttributeDescriptions),
-        InputAssemblyState::create(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP),
-        MultisampleState::create(),
-        blending,
-        rasterization,
-        DepthStencilState::create()};
-
-    pipelineLayout = PipelineLayout::create(DescriptorSetLayouts{descriptorSetLayout, textArrayDescriptorSetLayout}, pushConstantRanges);
-
-    auto graphicsPipeline = GraphicsPipeline::create(pipelineLayout, ShaderStages{vertexShader, fragmentShader}, pipelineStates);
-    bindGraphicsPipeline = BindGraphicsPipeline::create(graphicsPipeline);
-
-    // create texture image and associated DescriptorSets and binding
-    auto fontState = font->getShared<Font::FontState>();
-    auto descriptorSet = DescriptorSet::create(descriptorSetLayout, Descriptors{fontState->textureAtlas, fontState->glyphMetricsImage});
-
-    bindDescriptorSet = BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, descriptorSet);
-}
 
 template<typename T>
 void assignValue(T& dest, const T& src, bool& updated)
@@ -130,9 +42,12 @@ void assignValue(T& dest, const T& src, bool& updated)
     updated = true;
 }
 
-void GpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
+void GpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation, ref_ptr<const Options> options)
 {
     auto layout = text->layout;
+    if (!layout) return;
+
+    textExtents = layout->extents(text->text, *(text->font));
 
     bool textLayoutUpdated = false;
     bool textArrayUpdated = false;
@@ -143,6 +58,7 @@ void GpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
         ref_ptr<uintArray>& textArray;
         bool& updated;
         uint32_t minimumSize = 0;
+        uint32_t allocatedSize = 0;
         uint32_t size = 0;
 
         ConvertString(Font& in_font, ref_ptr<uintArray>& in_textArray, bool& in_updated, uint32_t in_minimumSize) :
@@ -151,16 +67,20 @@ void GpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
             updated(in_updated),
             minimumSize(in_minimumSize) {}
 
-        void allocate(uint32_t allocationSize)
+        void allocate(uint32_t requiredSize)
         {
-            size = allocationSize;
+            size = requiredSize;
 
-            if (allocationSize < minimumSize) allocationSize = minimumSize;
-            if (!textArray || allocationSize > static_cast<uint32_t>(textArray->valueCount()))
+            if (textArray && requiredSize < static_cast<uint32_t>(textArray->valueCount()))
             {
-                updated = true;
-                textArray = uintArray::create(allocationSize, 0u);
+                allocatedSize = static_cast<uint32_t>(textArray->valueCount());
+                return;
             }
+
+            allocatedSize = std::max(requiredSize, minimumSize);
+            textArray = uintArray::create(allocatedSize, 0u);
+
+            updated = true;
         }
 
         void apply(const stringValue& text) override
@@ -208,6 +128,8 @@ void GpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
     ConvertString convert(*(text->font), textArray, textArrayUpdated, minimumAllocation);
     text->text->accept(convert);
 
+    if (convert.allocatedSize == 0) return;
+
     uint32_t num_quads = convert.size;
 
     // TODO need to reallocate DescriptorBuffer if textArray changes size?
@@ -216,6 +138,7 @@ void GpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
     // set up the layout data in a form digestible by the GPU.
     if (!layoutValue) layoutValue = TextLayoutValue::create();
 
+    bool billboard = false;
     auto& layoutStruct = layoutValue->value();
     if (auto standardLayout = layout.cast<StandardLayout>(); standardLayout)
     {
@@ -225,7 +148,15 @@ void GpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
         assignValue(layoutStruct.color, standardLayout->color, textLayoutUpdated);
         assignValue(layoutStruct.outlineColor, standardLayout->outlineColor, textLayoutUpdated);
         assignValue(layoutStruct.outlineWidth, standardLayout->outlineWidth, textLayoutUpdated);
+
+        billboard = standardLayout->billboard;
+        assignValue(layoutStruct.billboardAutoScaleDistance, standardLayout->billboardAutoScaleDistance, textLayoutUpdated);
     }
+
+    // assign alignment offset
+    auto alignment = layout->alignment(text->text, *(text->font));
+    assignValue(layoutStruct.horizontalAlignment, alignment.x, textLayoutUpdated);
+    assignValue(layoutStruct.verticalAlignment, alignment.y, textLayoutUpdated);
 
     if (!layoutDescriptor) layoutDescriptor = DescriptorBuffer::create(layoutValue, 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
@@ -246,29 +177,126 @@ void GpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
     else
         draw->instanceCount = num_quads;
 
+    ref_ptr<StateGroup> stateGroup = scenegraph.cast<StateGroup>();
+
     // create StateGroup as the root of the scene/command graph to hold the GraphicsProgram, and binding of Descriptors to decorate the whole graph
-    if (!scenegraph)
+    if (!stateGroup)
     {
-        scenegraph = StateGroup::create();
+        stateGroup = StateGroup::create();
+        scenegraph = stateGroup;
 
-        // set up state related objects if they haven't already been assigned
-        if (!sharedRenderingState) sharedRenderingState = text->font->getShared<GpuLayoutState>();
-        if (sharedRenderingState->bindGraphicsPipeline) scenegraph->add(sharedRenderingState->bindGraphicsPipeline);
-        if (sharedRenderingState->bindDescriptorSet) scenegraph->add(sharedRenderingState->bindDescriptorSet);
+        auto shaderSet = text->shaderSet ? text->shaderSet : createTextShaderSet(options);
 
-        // set up graphics pipeline
-        auto textDescriptorSet = DescriptorSet::create(sharedRenderingState->textArrayDescriptorSetLayout, Descriptors{layoutDescriptor, textDescriptor});
-        bindTextDescriptorSet = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, sharedRenderingState->pipelineLayout, 1, textDescriptorSet);
-        scenegraph->add(bindTextDescriptorSet);
+        auto config = vsg::GraphicsPipelineConfigurator::create(shaderSet);
 
-        bindVertexBuffers = BindVertexBuffers::create(0, DataList{vertices});
+        auto& sharedObjects = text->font->sharedObjects;
+        if (!sharedObjects) sharedObjects = SharedObjects::create();
+
+        DataList arrays;
+        config->assignArray(arrays, "inPosition", VK_VERTEX_INPUT_RATE_VERTEX, vertices);
+
+        if (billboard)
+        {
+            config->shaderHints->defines.insert("BILLBOARD");
+        }
+
+        // set up sampler for atlas.
+        auto sampler = Sampler::create();
+        sampler->magFilter = VK_FILTER_LINEAR;
+        sampler->minFilter = VK_FILTER_LINEAR;
+        sampler->mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        sampler->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler->addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler->borderColor = VK_BORDER_COLOR_INT_TRANSPARENT_BLACK;
+        sampler->anisotropyEnable = VK_TRUE;
+        sampler->maxAnisotropy = 16.0f;
+        sampler->maxLod = 12.0;
+
+        if (sharedObjects) sharedObjects->share(sampler);
+
+        auto glyphMetricSampler = Sampler::create();
+        glyphMetricSampler->magFilter = VK_FILTER_NEAREST;
+        glyphMetricSampler->minFilter = VK_FILTER_NEAREST;
+        glyphMetricSampler->mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        glyphMetricSampler->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        glyphMetricSampler->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        glyphMetricSampler->addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        glyphMetricSampler->unnormalizedCoordinates = VK_TRUE;
+
+        if (sharedObjects) sharedObjects->share(glyphMetricSampler);
+
+        uint32_t stride = sizeof(vec4);
+        uint32_t numVec4PerGlyph = static_cast<uint32_t>(sizeof(GlyphMetrics) / sizeof(vec4));
+        uint32_t numGlyphs = static_cast<uint32_t>(text->font->glyphMetrics->valueCount());
+
+        auto glyphMetricsProxy = vec4Array2D::create(text->font->glyphMetrics, 0, stride, numVec4PerGlyph, numGlyphs, Data::Properties{VK_FORMAT_R32G32B32A32_SFLOAT});
+
+        Descriptors descriptors;
+        config->assignTexture(descriptors, "textureAtlas", text->font->atlas, sampler);
+        config->assignTexture(descriptors, "glyphMetrics", glyphMetricsProxy, glyphMetricSampler);
+
+        if (sharedObjects) sharedObjects->share(descriptors);
+
+        // disable face culling so text can be seen from both sides
+        config->rasterizationState->cullMode = VK_CULL_MODE_NONE;
+
+        // set topology of primitive
+        config->inputAssemblyState->topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+
+        // set alpha blending
+        VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
+        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
+                                              VK_COLOR_COMPONENT_G_BIT |
+                                              VK_COLOR_COMPONENT_B_BIT |
+                                              VK_COLOR_COMPONENT_A_BIT;
+
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+        config->colorBlendState->attachments = {colorBlendAttachment};
+
+        // set up descriptor set for text uniforms and layout
+        DescriptorSetLayoutBindings textArrayDescriptorBindings{
+            {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}, // Layout uniform
+            {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}  // Text uniform
+        };
+
+        auto textArrayDescriptorSetLayout = DescriptorSetLayout::create(textArrayDescriptorBindings);
+        if (sharedObjects) sharedObjects->share(textArrayDescriptorSetLayout);
+
+        config->additionalDescriptorSetLayout = textArrayDescriptorSetLayout;
+
+        if (sharedObjects)
+            sharedObjects->share(config, [](auto gpc) { gpc->init(); });
+        else
+            config->init();
+
+        stateGroup->add(config->bindGraphicsPipeline);
+
+        auto descriptorSetLayout = config->descriptorSetLayout;
+        if (sharedObjects) sharedObjects->share(descriptorSetLayout);
+        auto descriptorSet = vsg::DescriptorSet::create(descriptorSetLayout, descriptors);
+        auto bindDescriptorSet = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, config->layout, 0, descriptorSet);
+        if (sharedObjects) sharedObjects->share(bindDescriptorSet);
+        stateGroup->add(bindDescriptorSet);
+
+        auto textDescriptorSet = DescriptorSet::create(textArrayDescriptorSetLayout, Descriptors{layoutDescriptor, textDescriptor});
+        bindTextDescriptorSet = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, config->layout, 1, textDescriptorSet);
+        stateGroup->add(bindTextDescriptorSet);
+
+        bindVertexBuffers = BindVertexBuffers::create(0, arrays);
 
         // setup geometry
         auto drawCommands = Commands::create();
         drawCommands->addChild(bindVertexBuffers);
         drawCommands->addChild(draw);
-
-        scenegraph->addChild(drawCommands);
+        stateGroup->addChild(drawCommands);
     }
     else
     {
@@ -281,4 +309,8 @@ void GpuLayoutTechnique::setup(Text* text, uint32_t minimumAllocation)
             layoutDescriptor->copyDataListToBuffers();
         }
     }
+}
+void GpuLayoutTechnique::setup(TextGroup* textGroup, uint32_t minimumAllocation, ref_ptr<const Options> options)
+{
+    info("GpuLayoutTechnique::setup(", textGroup, ", ", minimumAllocation, options, ") not yet supported");
 }

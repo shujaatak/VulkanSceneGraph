@@ -12,22 +12,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vulkan/vulkan.h>
-
-#include <vsg/nodes/Node.h>
+#include <vsg/nodes/Compilable.h>
 
 namespace vsg
 {
     class CommandBuffer;
-    class Context;
 
-    class VSG_DECLSPEC Command : public Inherit<Node, Command>
+    /// Command base class from encapsualting vkCmd* calls and associated settings.
+    class VSG_DECLSPEC Command : public Inherit<Compilable, Command>
     {
     public:
-        Command(Allocator* allocator = nullptr) :
-            Inherit(allocator) {}
-
-        virtual void compile(Context& /*context*/) {}
+        Command() {}
 
         virtual void record(CommandBuffer& commandBuffer) const = 0;
     };

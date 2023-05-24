@@ -10,10 +10,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/core/compare.h>
 #include <vsg/io/Options.h>
 #include <vsg/state/DescriptorTexelBufferView.h>
-#include <vsg/traversals/CompileTraversal.h>
-#include <vsg/vk/CommandBuffer.h>
+#include <vsg/vk/Context.h>
 
 using namespace vsg;
 
@@ -21,6 +21,15 @@ DescriptorTexelBufferView::DescriptorTexelBufferView(uint32_t in_dstBinding, uin
     Inherit(in_dstBinding, in_dstArrayElement, in_descriptorType),
     texelBufferViews(in_texelBufferViews)
 {
+}
+
+int DescriptorTexelBufferView::compare(const Object& rhs_object) const
+{
+    int result = Descriptor::compare(rhs_object);
+    if (result != 0) return result;
+
+    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+    return compare_pointer_container(texelBufferViews, rhs.texelBufferViews);
 }
 
 void DescriptorTexelBufferView::compile(Context& context)

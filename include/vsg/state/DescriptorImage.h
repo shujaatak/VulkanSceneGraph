@@ -17,6 +17,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+
+    /// DescriptorImage is Descriptor class that encapsulates imageInfoList used to set VkWriteDescriptorSet.pImageInfo settings
+    /// DescriptorImage is means for passing textures to shaders.
     class VSG_DECLSPEC DescriptorImage : public Inherit<Descriptor, DescriptorImage>
     {
     public:
@@ -33,6 +36,8 @@ namespace vsg
 
         /// VkWriteDescriptorSet.pImageInfo settings
         ImageInfoList imageInfoList;
+
+        int compare(const Object& rhs_object) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;

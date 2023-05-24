@@ -12,12 +12,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/commands/PushConstants.h>
 #include <vsg/maths/plane.h>
+#include <vsg/maths/transform.h>
 #include <vsg/nodes/MatrixTransform.h>
-#include <vsg/state/ComputePipeline.h>
-#include <vsg/state/DescriptorSet.h>
-#include <vsg/state/GraphicsPipeline.h>
+#include <vsg/state/PushConstants.h>
 #include <vsg/vk/CommandBuffer.h>
 
 #include <array>
@@ -29,6 +27,7 @@ namespace vsg
 
 #define POLYTOPE_SIZE 5
 
+    /// StateStack used internally by vsg::State to manage stack of vsg::StateCommand
     template<class T>
     class StateStack
     {
@@ -72,6 +71,7 @@ namespace vsg
         }
     };
 
+    /// MatrixStack used internally by vsg::State to manage stack of project or modelview matrices
     class MatrixStack
     {
     public:
@@ -154,20 +154,23 @@ namespace vsg
         }
     };
 
+    /// Frustum used internally by vsg::State to manage view fustum culling during vsg::RecordTraversal
     struct Frustum
     {
         using value_type = MatrixStack::value_type;
         using Plane = t_plane<value_type>;
+        using Vector = t_vec4<value_type>;
         Plane face[POLYTOPE_SIZE];
+        Vector lodScale;
 
         Frustum()
         {
             face[0].set(1.0, 0.0, 0.0, 1.0);                                    // left plane
             face[1].set(-1.0, 0.0, 0.0, 1.0);                                   // right plane
-            face[2].set(0.0, 1.0, 0.0, 1.0);                                    // bottom plane
-            face[3].set(0.0, -1.0, 0.0, 1.0);                                   // top plane
-            if constexpr (POLYTOPE_SIZE >= 5) face[4].set(0.0, 0.0, -1.0, 1.0); // far plane
-            if constexpr (POLYTOPE_SIZE >= 6) face[5].set(0.0, 0.0, 1.0, 1.0);  // near plane
+            face[2].set(0.0, -1.0, 0.0, 1.0);                                   // bottom plane
+            face[3].set(0.0, 1.0, 0.0, 1.0);                                    // top plane
+            if constexpr (POLYTOPE_SIZE >= 5) face[4].set(0.0, 0.0, 1.0, 0.0);  // far plane
+            if constexpr (POLYTOPE_SIZE >= 6) face[5].set(0.0, 0.0, -1.0, 1.0); // near plane
         }
 
         template<class M>
@@ -192,8 +195,20 @@ namespace vsg
             if constexpr (POLYTOPE_SIZE >= 6) face[5] = pt.face[5] * matrix;
         }
 
+        template<class M>
+        void computeLodScale(const M& proj, const M& mv)
+        {
+            value_type f = -proj[1][1];
+            value_type sc = f * std::sqrt(square(mv[0][0]) + square(mv[1][0]) + square(mv[2][0]) + square(mv[0][1]) + square(mv[1][1]) + square(mv[2][1])) * 0.5;
+            value_type inv_scale = value_type(1.0) / sc;
+            lodScale.set(mv[0][2] * inv_scale,
+                         mv[1][2] * inv_scale,
+                         mv[2][2] * inv_scale,
+                         mv[3][2] * inv_scale);
+        }
+
         template<typename T>
-        bool intersect(const t_sphere<T>& s)
+        bool intersect(const t_sphere<T>& s) const
         {
             auto negative_radius = -s.radius;
             if (distance(face[0], s.center) < negative_radius) return false;
@@ -208,6 +223,7 @@ namespace vsg
         }
     };
 
+    /// vsg::State used by vsg::RecordTraversal to manage state stacks, projection, modelview matrix and frustum stacks.
     class State : public Inherit<Object, State>
     {
     public:
@@ -271,11 +287,13 @@ namespace vsg
         inline void pushFrustum()
         {
             _frustumStack.push(Frustum(_frustumProjected, modelviewMatrixStack.top()));
+            _frustumStack.top().computeLodScale(projectionMatrixStack.top(), modelviewMatrixStack.top());
         }
 
         inline void applyFrustum()
         {
             _frustumStack.top().set(_frustumProjected, modelviewMatrixStack.top());
+            _frustumStack.top().computeLodScale(projectionMatrixStack.top(), modelviewMatrixStack.top());
         }
 
         inline void popFrustum()
@@ -284,9 +302,19 @@ namespace vsg
         }
 
         template<typename T>
-        bool intersect(const t_sphere<T>& s)
+        bool intersect(const t_sphere<T>& s) const
         {
             return _frustumStack.top().intersect(s);
+        }
+
+        template<typename T>
+        T lodDistance(const t_sphere<T>& s) const
+        {
+            const auto& frustum = _frustumStack.top();
+            if (!frustum.intersect(s)) return -1.0;
+
+            const auto& lodScale = frustum.lodScale;
+            return std::abs(lodScale[0] * s.x + lodScale[1] * s.y + lodScale[2] * s.z + lodScale[3]);
         }
     };
 

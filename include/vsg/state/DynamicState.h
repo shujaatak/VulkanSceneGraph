@@ -16,12 +16,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+
+    /// DynamicState encapsulates to VkPipelineDynamicStateCreateInfo settings passed when setting up GraphicsPipeline
     class VSG_DECLSPEC DynamicState : public Inherit<GraphicsPipelineState, DynamicState>
     {
     public:
         using DynamicStates = std::vector<VkDynamicState>;
 
         DynamicState();
+        DynamicState(const DynamicState& ds);
 
         explicit DynamicState(const DynamicStates& states) :
             dynamicStates(states) {}
@@ -32,6 +35,8 @@ namespace vsg
 
         /// VkPipelineDynamicStateCreateInfo settings
         DynamicStates dynamicStates;
+
+        int compare(const Object& rhs) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;

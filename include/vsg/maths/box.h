@@ -18,6 +18,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+    /// t_box template class that represent a axis aligned bounding box
     template<typename T>
     struct t_box
     {
@@ -27,12 +28,35 @@ namespace vsg
         vec_type min = vec_type(std::numeric_limits<value_type>::max(), std::numeric_limits<value_type>::max(), std::numeric_limits<value_type>::max());
         vec_type max = vec_type(std::numeric_limits<value_type>::lowest(), std::numeric_limits<value_type>::lowest(), std::numeric_limits<value_type>::lowest());
 
+        constexpr t_box() = default;
+        constexpr t_box(const t_box& s) = default;
+
+        template<typename R>
+        constexpr explicit t_box(const t_box<R>& s) :
+            min(s.min),
+            max(s.max) {}
+
+        constexpr t_box(const vec_type& in_min, const vec_type& in_max) :
+            min(in_min),
+            max(in_max) {}
+
+        constexpr t_box& operator=(const t_box&) = default;
+
         constexpr std::size_t size() const { return 6; }
+
+        value_type& operator[](std::size_t i) { return data()[i]; }
+        value_type operator[](std::size_t i) const { return data()[i]; }
 
         bool valid() const { return min.x <= max.x; }
 
         T* data() { return min.data(); }
         const T* data() const { return min.data(); }
+
+        void reset()
+        {
+            min = vec_type(std::numeric_limits<value_type>::max(), std::numeric_limits<value_type>::max(), std::numeric_limits<value_type>::max());
+            max = vec_type(std::numeric_limits<value_type>::lowest(), std::numeric_limits<value_type>::lowest(), std::numeric_limits<value_type>::lowest());
+        }
 
         template<typename R>
         void add(const t_vec3<R>& v)
@@ -49,10 +73,21 @@ namespace vsg
             if (y > max.y) max.y = y;
             if (z > max.z) max.z = z;
         }
+
+        template<typename R>
+        void add(const t_box<R>& bb)
+        {
+            if (bb.min.x < min.x) min.x = bb.min.x;
+            if (bb.min.y < min.y) min.y = bb.min.y;
+            if (bb.min.z < min.z) min.z = bb.min.z;
+            if (bb.max.x > max.x) max.x = bb.max.x;
+            if (bb.max.y > max.y) max.y = bb.max.y;
+            if (bb.max.z > max.z) max.z = bb.max.z;
+        }
     };
 
-    using box = t_box<float>;
-    using dbox = t_box<double>;
+    using box = t_box<float>;   /// float box class
+    using dbox = t_box<double>; /// double box class
 
     VSG_type_name(vsg::box);
     VSG_type_name(vsg::dbox);

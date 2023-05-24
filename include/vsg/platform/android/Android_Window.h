@@ -14,7 +14,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #define VK_USE_PLATFORM_ANDROID_KHR
 
-#include <vsg/viewer/Window.h>
+#include <vsg/app/Window.h>
 #include <vsg/ui/KeyEvent.h>
 
 #include <android/input.h>
@@ -22,6 +22,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsgAndroid
 {
+
+    /// KeyboardMap maps Andriod keyboard events to vsg::KeySymbol
     class KeyboardMap : public vsg::Object
     {
     public:
@@ -45,7 +47,7 @@ namespace vsgAndroid
             if (metastate & AMETA_CAPS_LOCK_ON) modifierMask |= vsg::KeyModifier::MODKEY_CapsLock;
             if (metastate & AMETA_NUM_LOCK_ON) modifierMask |= vsg::KeyModifier::MODKEY_NumLock;
 
-            keyModifier = (vsg::KeyModifier) modifierMask;
+            keyModifier = (vsg::KeyModifier)modifierMask;
 
             // need to get the modified key somehow but seems we may need to talk to java for that :(
 
@@ -56,15 +58,29 @@ namespace vsgAndroid
         AKeyCodeToKeySymbolMap _keycodeMap;
     };
 
-
+    /// Android_Window implements Android specific window creation, event handling and vulkan Surface setup.
+    ///
+    /// In order to initialise the window, an ANativeWindow* handle must be provided through WindowTraits,
+    /// provided via the value "nativeWindow".
+    ///
+    /// ```
+    /// // void android_main(struct android_app* app)
+    /// auto traits = vsg::WindowTraits::create();
+    /// traits->setValue("nativeWindow", app->window);
+    /// auto window = vsg::Window::create(traits);
+    /// ```
+    ///
+    /// This window handle may also be provided through WindowTraits::nativeWindow however due to
+    /// the way Android loads shared libraries this is likely to encounter duplicate typeinfo for
+    /// ANativeWindow, and as a result can throw a std::bad_any_cast on later NDK versions and some
+    /// system architectures.
     class Android_Window : public vsg::Inherit<vsg::Window, Android_Window>
     {
     public:
-
         Android_Window(vsg::ref_ptr<vsg::WindowTraits> traits);
         Android_Window() = delete;
         Android_Window(const Android_Window&) = delete;
-        Android_Window operator = (const Android_Window&) = delete;
+        Android_Window operator=(const Android_Window&) = delete;
 
         const char* instanceExtensionSurfaceName() const override { return "VK_KHR_android_surface"; }
 

@@ -13,22 +13,25 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <map>
-#include <string>
 #include <vector>
 
 #include <vsg/core/Object.h>
+#include <vsg/core/contains.h>
+#include <vsg/io/Path.h>
 
 namespace vsg
 {
 
     class Options;
-    using Path = std::string;
-    using Paths = std::vector<Path>;
-    using PathObjects = std::map<Path, ref_ptr<Object>>;
 
+    /// get the specified environmental variable.
     extern VSG_DECLSPEC std::string getEnv(const char* env_var);
+
+    /// parse the specified environmental variable using platorm specific delimiter, returning list of Paths
+    /// delimiter used is ; under Windows, and : on all other platforms.
     extern VSG_DECLSPEC Paths getEnvPaths(const char* env_var);
 
+    /// parsing multiple environmental variables, parsing them to return a list of Paths.
     template<typename... Args>
     Paths getEnvPaths(const char* env_var, Args... args)
     {
@@ -38,30 +41,29 @@ namespace vsg
         return paths;
     }
 
+    /// return file type, see include/vsg/io/Path.h for FileType enum,
+    extern VSG_DECLSPEC FileType fileType(const Path& path);
+
+    /// return true if a specified file/path exist on system.
     extern VSG_DECLSPEC bool fileExists(const Path& path);
 
-    extern VSG_DECLSPEC Path filePath(const Path& path);
-
-    extern VSG_DECLSPEC Path fileExtension(const Path& path);
-    extern VSG_DECLSPEC Path lowerCaseFileExtension(const Path& path);
-
-    extern VSG_DECLSPEC Path simpleFilename(const Path& path);
-
-    extern VSG_DECLSPEC Path removeExtension(const Path& path);
-
-    extern VSG_DECLSPEC Path concatPaths(const Path& left, const Path& right);
-
-    template<typename... Args>
-    Path concatPaths(const Path& left, Args... args)
-    {
-        return concatPaths(left, concatPaths(args...));
-    }
-
+    /// return the full filename path if specified filename can be found in the list of paths.
     extern VSG_DECLSPEC Path findFile(const Path& filename, const Paths& paths);
 
+    /// return the full filename path if specified filename can be found in the options->paths list.
+    /// If options is null and the filename can be found using it's existing path that filename is return, otherwise empty Path{} is returned.
     extern VSG_DECLSPEC Path findFile(const Path& filename, const Options* options);
 
     /// make a directory, return true if path already exists or full path has been created successfully, return false on failure.
     extern VSG_DECLSPEC bool makeDirectory(const Path& path);
+
+    /// get the contents of a directory, return {} if directory name is not a directory
+    extern VSG_DECLSPEC Paths getDirectoryContents(const Path& directoryName);
+
+    /// returns the path/filename of the currently executed program.
+    extern VSG_DECLSPEC Path executableFilePath();
+
+    /// Open a file using a the C style fopen() adapted with work with the vsg::Path.
+    extern VSG_DECLSPEC FILE* fopen(const Path& path, const char* mode);
 
 } // namespace vsg

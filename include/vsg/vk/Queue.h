@@ -13,7 +13,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/core/Object.h>
-#include <vulkan/vulkan.h>
+#include <vsg/vk/vulkan.h>
 
 #include <mutex>
 #include <vector>
@@ -23,12 +23,13 @@ namespace vsg
     // forward declare
     class Fence;
 
-    class VSG_DECLSPEC Queue : public Object
+    /// Queue encapsulates a single vkQueue, used to submit vulkan commands for processing.
+    class VSG_DECLSPEC Queue : public Inherit<Object, Queue>
     {
     public:
         operator VkQueue() const { return _vkQueue; }
+        VkQueue vk() const { return _vkQueue; }
 
-        VkQueue queue() const { return _vkQueue; }
         uint32_t queueFamilyIndex() const { return _queueFamilyIndex; }
         uint32_t queueIndex() const { return _queueIndex; }
 
@@ -56,5 +57,6 @@ namespace vsg
         uint32_t _queueIndex;
         std::mutex _mutex;
     };
+    VSG_type_name(vsg::Queue);
 
 } // namespace vsg

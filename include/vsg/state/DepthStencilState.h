@@ -16,15 +16,18 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+
+    /// DepthStencilState encapsulates to VkPipelineDepthStencilStateCreateInfo settings passed when setting up GraphicsPipeline
     class VSG_DECLSPEC DepthStencilState : public Inherit<GraphicsPipelineState, DepthStencilState>
     {
     public:
         DepthStencilState();
+        DepthStencilState(const DepthStencilState& dss);
 
         /// VkPipelineDepthStencilStateCreateInfo settings
         VkBool32 depthTestEnable = VK_TRUE;
         VkBool32 depthWriteEnable = VK_TRUE;
-        VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;
+        VkCompareOp depthCompareOp = VK_COMPARE_OP_GREATER;
         VkBool32 depthBoundsTestEnable = VK_FALSE;
         VkBool32 stencilTestEnable = VK_FALSE;
         VkStencilOpState front = {};
@@ -32,8 +35,11 @@ namespace vsg
         float minDepthBounds = 0.0f;
         float maxDepthBounds = 1.0f;
 
+        int compare(const Object& rhs) const override;
+
         void read(Input& input) override;
         void write(Output& output) const override;
+
         void apply(Context& context, VkGraphicsPipelineCreateInfo& pipelineInfo) const override;
 
     protected:

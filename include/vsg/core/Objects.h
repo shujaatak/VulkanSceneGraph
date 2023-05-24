@@ -20,11 +20,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// Simple container class that has a list of vsg::Object as children
     class VSG_DECLSPEC Objects : public Inherit<Object, Objects>
     {
     public:
         explicit Objects(size_t numChildren = 0);
-        explicit Objects(Allocator* allocator, size_t numChildren = 0);
 
         template<class N, class V>
         static void t_traverse(N& node, V& visitor)

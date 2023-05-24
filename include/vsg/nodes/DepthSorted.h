@@ -18,12 +18,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// DepthSorted node is used to control which bin to place the subgraph in placed in.
+    /// During the RecordTraversak the nodes bound sphere is tested against the view frustum
+    /// and if within the subgraph is traversed, with the children being in specified bin.
+    /// Typically used for decorating translucent objects that should be sorted back to front to
+    /// ensure correct blending.
     class VSG_DECLSPEC DepthSorted : public Inherit<Node, DepthSorted>
     {
     public:
-        DepthSorted(Allocator* allocator = nullptr);
+        DepthSorted();
 
-        DepthSorted(int32_t in_binNumber, const dsphere& in_bound, ref_ptr<Node> in_child, Allocator* allocator = nullptr);
+        DepthSorted(int32_t in_binNumber, const dsphere& in_bound, ref_ptr<Node> in_child);
 
         void traverse(Visitor& visitor) override { child->accept(visitor); }
         void traverse(ConstVisitor& visitor) const override { child->accept(visitor); }

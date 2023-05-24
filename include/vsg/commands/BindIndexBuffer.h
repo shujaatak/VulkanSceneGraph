@@ -23,16 +23,21 @@ namespace vsg
     /** Compute the VkIndexType from Data source's value size.*/
     extern VSG_DECLSPEC VkIndexType computeIndexType(const Data* indices);
 
+    /// BindIndexBuffer command encapsulates vkBindIndexBuffer call and associated settings.
     class VSG_DECLSPEC BindIndexBuffer : public Inherit<Command, BindIndexBuffer>
     {
     public:
         BindIndexBuffer() {}
 
         explicit BindIndexBuffer(ref_ptr<Data> in_indices);
+        BindIndexBuffer(VkIndexType in_indexType, ref_ptr<BufferInfo> in_indices);
 
+        VkIndexType indexType = VK_INDEX_TYPE_UINT16;
         ref_ptr<BufferInfo> indices;
 
         void assignIndices(ref_ptr<vsg::Data> in_indices);
+
+        int compare(const Object& rhs) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;
@@ -43,8 +48,6 @@ namespace vsg
 
     protected:
         virtual ~BindIndexBuffer();
-
-        VkIndexType indexType = VK_INDEX_TYPE_UINT16;
     };
     VSG_type_name(vsg::BindIndexBuffer);
 

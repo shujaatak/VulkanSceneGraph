@@ -18,22 +18,20 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// Encapsulation of vkCmdBlitImage functionality
+    /// BlitImage command encapsulates vkCmdBlitImage functionality and associated settings
     class VSG_DECLSPEC BlitImage : public Inherit<Command, BlitImage>
     {
     public:
         BlitImage();
 
-        void record(CommandBuffer& commandBuffer) const override;
-
-        using Regions = std::vector<VkImageBlit>;
-
         ref_ptr<Image> srcImage;
         VkImageLayout srcImageLayout;
         ref_ptr<Image> dstImage;
         VkImageLayout dstImageLayout;
-        Regions regions;
+        std::vector<VkImageBlit> regions;
         VkFilter filter;
+
+        void record(CommandBuffer& commandBuffer) const override;
     };
     VSG_type_name(vsg::BlitImage);
 

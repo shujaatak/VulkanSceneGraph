@@ -19,11 +19,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// ComputePipeline encapsulates compute VkPipeline and the VkComputePipelineCreateInfo settings used to set it up.
     class VSG_DECLSPEC ComputePipeline : public Inherit<Object, ComputePipeline>
     {
     public:
         ComputePipeline();
         ComputePipeline(PipelineLayout* pipelineLayout, ShaderStage* shaderStage);
+
+        int compare(const Object& rhs_object) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;
@@ -57,10 +60,13 @@ namespace vsg
     };
     VSG_type_name(vsg::ComputePipeline);
 
+    /// BindComputePipeline state command encapsulates the vkCmdBindPipeline call for a ComputePipeline.
     class VSG_DECLSPEC BindComputePipeline : public Inherit<StateCommand, BindComputePipeline>
     {
     public:
         BindComputePipeline(ComputePipeline* pipeline = nullptr);
+
+        int compare(const Object& rhs_object) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;

@@ -10,27 +10,21 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/traversals/CompileTraversal.h>
-
-#include <vsg/commands/Command.h>
-#include <vsg/commands/Commands.h>
+#include <vsg/app/View.h>
+#include <vsg/commands/BindIndexBuffer.h>
+#include <vsg/commands/BindVertexBuffers.h>
 #include <vsg/nodes/Bin.h>
 #include <vsg/nodes/DepthSorted.h>
 #include <vsg/nodes/Geometry.h>
 #include <vsg/nodes/Group.h>
-#include <vsg/nodes/LOD.h>
 #include <vsg/nodes/PagedLOD.h>
-#include <vsg/nodes/QuadGroup.h>
 #include <vsg/nodes/StateGroup.h>
+#include <vsg/nodes/VertexDraw.h>
+#include <vsg/nodes/VertexIndexDraw.h>
+#include <vsg/state/DescriptorImage.h>
 #include <vsg/state/MultisampleState.h>
-#include <vsg/viewer/CommandGraph.h>
-#include <vsg/viewer/RenderGraph.h>
-#include <vsg/viewer/View.h>
-#include <vsg/vk/CommandBuffer.h>
 #include <vsg/vk/RenderPass.h>
-#include <vsg/vk/State.h>
-
-#include <iostream>
+#include <vsg/vk/ResourceRequirements.h>
 
 using namespace vsg;
 
@@ -38,8 +32,10 @@ using namespace vsg;
 //
 // ResourceRequirements
 //
-ResourceRequirements::ResourceRequirements()
+ResourceRequirements::ResourceRequirements(ref_ptr<ResourceHints> hints)
 {
+    binStack.push(ResourceRequirements::BinDetails{});
+    if (hints) apply(*hints);
 }
 
 uint32_t ResourceRequirements::computeNumDescriptorSets() const
@@ -55,6 +51,21 @@ DescriptorPoolSizes ResourceRequirements::computeDescriptorPoolSizes() const
         poolSizes.push_back(VkDescriptorPoolSize{type, count});
     }
     return poolSizes;
+}
+
+void ResourceRequirements::apply(const ResourceHints& resourceHints)
+{
+    if (resourceHints.maxSlot > maxSlot) maxSlot = resourceHints.maxSlot;
+
+    if (!resourceHints.descriptorPoolSizes.empty() || resourceHints.numDescriptorSets > 0)
+    {
+        externalNumDescriptorSets += resourceHints.numDescriptorSets;
+
+        for (auto& [type, count] : resourceHints.descriptorPoolSizes)
+        {
+            descriptorTypeMap[type] += count;
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -98,17 +109,7 @@ bool CollectResourceRequirements::checkForResourceHints(const Object& object)
 
 void CollectResourceRequirements::apply(const ResourceHints& resourceHints)
 {
-    if (resourceHints.maxSlot > requirements.maxSlot) requirements.maxSlot = resourceHints.maxSlot;
-
-    if (!resourceHints.descriptorPoolSizes.empty() || resourceHints.numDescriptorSets > 0)
-    {
-        requirements.externalNumDescriptorSets += resourceHints.numDescriptorSets;
-
-        for (auto& [type, count] : resourceHints.descriptorPoolSizes)
-        {
-            requirements.descriptorTypeMap[type] += count;
-        }
-    }
+    requirements.apply(resourceHints);
 }
 
 void CollectResourceRequirements::apply(const Node& node)
@@ -167,13 +168,42 @@ void CollectResourceRequirements::apply(const DescriptorSet& descriptorSet)
     }
 }
 
-void CollectResourceRequirements::apply(const Descriptor& descriptor)
+bool CollectResourceRequirements::registerDescriptor(const Descriptor& descriptor)
 {
+    requirements.descriptorTypeMap[descriptor.descriptorType] += descriptor.getNumDescriptors();
+
     if (requirements.descriptors.count(&descriptor) == 0)
     {
         requirements.descriptors.insert(&descriptor);
+        return true;
     }
-    requirements.descriptorTypeMap[descriptor.descriptorType] += descriptor.getNumDescriptors();
+    else
+    {
+        return false;
+    }
+}
+
+void CollectResourceRequirements::apply(const Descriptor& descriptor)
+{
+    registerDescriptor(descriptor);
+}
+
+void CollectResourceRequirements::apply(const DescriptorBuffer& descriptorBuffer)
+{
+    if (registerDescriptor(descriptorBuffer))
+    {
+        //info("CollectResourceRequirements::apply(const DescriptorBuffer& descriptorBuffer) ", &descriptorBuffer);
+        for (auto& bufferInfo : descriptorBuffer.bufferInfoList) apply(bufferInfo);
+    }
+}
+
+void CollectResourceRequirements::apply(const DescriptorImage& descriptorImage)
+{
+    if (registerDescriptor(descriptorImage))
+    {
+        //info("CollectResourceRequirements::apply(const DescriptorImage& descriptorImage) ", &descriptorImage);
+        for (auto& imageInfo : descriptorImage.imageInfoList) apply(imageInfo);
+    }
 }
 
 void CollectResourceRequirements::apply(const View& view)
@@ -194,6 +224,13 @@ void CollectResourceRequirements::apply(const View& view)
         requirements.binStack.top().bins.insert(bin);
     }
 
+    if (view.viewDependentState)
+    {
+        if (requirements.maxSlot < 2) requirements.maxSlot = 2;
+
+        view.viewDependentState->accept(*this);
+    }
+
     requirements.views[&view] = requirements.binStack.top();
 
     requirements.binStack.pop();
@@ -209,4 +246,31 @@ void CollectResourceRequirements::apply(const DepthSorted& depthSorted)
 void CollectResourceRequirements::apply(const Bin& bin)
 {
     requirements.binStack.top().bins.insert(&bin);
+}
+
+void CollectResourceRequirements::apply(const Geometry& geometry)
+{
+    for (auto& bufferInfo : geometry.arrays) apply(bufferInfo);
+    apply(geometry.indices);
+}
+
+void CollectResourceRequirements::apply(const VertexDraw& vd)
+{
+    for (auto& bufferInfo : vd.arrays) apply(bufferInfo);
+}
+
+void CollectResourceRequirements::apply(const VertexIndexDraw& vid)
+{
+    for (auto& bufferInfo : vid.arrays) apply(bufferInfo);
+    apply(vid.indices);
+}
+
+void CollectResourceRequirements::apply(const BindVertexBuffers& bvb)
+{
+    for (auto& bufferInfo : bvb.arrays) apply(bufferInfo);
+}
+
+void CollectResourceRequirements::apply(const BindIndexBuffer& bib)
+{
+    apply(bib.indices);
 }

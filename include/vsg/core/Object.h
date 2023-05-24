@@ -14,6 +14,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <atomic>
 #include <string>
+#include <typeindex>
+#include <vector>
 
 #include <vsg/core/Export.h>
 #include <vsg/core/ref_ptr.h>
@@ -27,7 +29,6 @@ namespace vsg
     class Visitor;
     class ConstVisitor;
     class RecordTraversal;
-    class Allocator;
     class Input;
     class Output;
     class Object;
@@ -42,12 +43,22 @@ namespace vsg
     public:
         Object();
 
-        explicit Object(Allocator* allocator);
-
         Object(const Object&);
         Object& operator=(const Object&);
 
-        //static ref_ptr<Object> create(Allocator* allocator=nullptr);
+        static ref_ptr<Object> create() { return ref_ptr<Object>(new Object); }
+
+        static ref_ptr<Object> create_if(bool flag)
+        {
+            if (flag)
+                return ref_ptr<Object>(new Object);
+            else
+                return {};
+        }
+
+        /// provide new and delete to enable custom memory management via the vsg::Allocator singleton, using the MEMORY_AFFINTY_OBJECTS
+        static void* operator new(std::size_t count);
+        static void operator delete(void* ptr);
 
         virtual std::size_t sizeofObject() const noexcept { return sizeof(Object); }
         virtual const char* className() const noexcept { return type_name<Object>(); }
@@ -61,6 +72,9 @@ namespace vsg
 
         template<class T>
         const T* cast() const { return is_compatible(typeid(T)) ? static_cast<const T*>(this) : nullptr; }
+
+        /// compare two objects, return -1 if this object is less than rhs, return 0 if it's equal, return 1 if rhs is greater,
+        virtual int compare(const Object& rhs) const;
 
         virtual void accept(Visitor& visitor);
         virtual void traverse(Visitor&) {}
@@ -96,32 +110,43 @@ namespace vsg
         bool getValue(const std::string& key, T& value) const;
 
         /// assign an Object associated with key
-        void setObject(const std::string& key, Object* object);
+        void setObject(const std::string& key, ref_ptr<Object> object);
 
-        /// get Object associated with key, return nullptr if no object associated with key has been assigned
+        /// get Object pointer associated with key, return nullptr if no object associated with key has been assigned
         Object* getObject(const std::string& key);
 
-        /// get const Object associated with key, return nullptr if no object associated with key has been assigned
+        /// get const Object pointer associated with key, return nullptr if no object associated with key has been assigned
         const Object* getObject(const std::string& key) const;
 
-        /// get object of specified type associated with key, return nullptr if no object associated with key has been assigned
+        /// get object pointer of specified type associated with key, return nullptr if no object associated with key has been assigned
         template<class T>
         T* getObject(const std::string& key) { return dynamic_cast<T*>(getObject(key)); }
 
-        /// get const object of specified type associated with key, return nullptr if no object associated with key has been assigned
+        /// get const object pointer of specified type associated with key, return nullptr if no object associated with key has been assigned
         template<class T>
         const T* getObject(const std::string& key) const { return dynamic_cast<const T*>(getObject(key)); }
+
+        /// get ref_ptr<Object> associated with key, return nullptr if no object associated with key has been assigned
+        ref_ptr<Object> getRefObject(const std::string& key);
+
+        /// get ref_ptr<const Object> pointer associated with key, return nullptr if no object associated with key has been assigned
+        ref_ptr<const Object> getRefObject(const std::string& key) const;
+
+        /// get ref_ptr<T> of specified type associated with key, return nullptr if no object associated with key has been assigned
+        template<class T>
+        ref_ptr<T> getRefObject(const std::string& key) { return getRefObject(key).cast<T>(); }
+
+        /// get ref_ptr<const T>  of specified type associated with key, return nullptr if no object associated with key has been assigned
+        template<class T>
+        const ref_ptr<const T> getRefObject(const std::string& key) const { return getRefObject(key).cast<const T>(); }
 
         /// remove meta object or value associated with key
         void removeObject(const std::string& key);
 
-        // Auxiliary object access methods, the optional Auxiliary is used to store meta data and links to Allocator
-        Auxiliary* getOrCreateUniqueAuxiliary();
+        // Auxiliary object access methods, the optional Auxiliary is used to store meta data
+        Auxiliary* getOrCreateAuxiliary();
         Auxiliary* getAuxiliary() { return _auxiliary; }
         const Auxiliary* getAuxiliary() const { return _auxiliary; }
-
-        // convenience method for getting the optional Allocator, if present this Allocator would have been used to create this Objects memory
-        Allocator* getAllocator() const;
 
     protected:
         virtual ~Object();
@@ -130,7 +155,6 @@ namespace vsg
         void setAuxiliary(Auxiliary* auxiliary);
 
     private:
-        friend class Allocator;
         friend class Auxiliary;
 
         mutable std::atomic_uint _referenceCount;
@@ -152,5 +176,8 @@ namespace vsg
 
     template<>
     constexpr bool has_read_write<Object>() { return true; }
+
+    using RefObjectPath = std::vector<ref_ptr<Object>>;
+    using ObjectPath = std::vector<Object*>;
 
 } // namespace vsg

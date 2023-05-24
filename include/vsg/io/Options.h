@@ -20,14 +20,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    //class FileCache;
-    class ObjectCache;
+    class SharedObjects;
     class ReaderWriter;
     class OperationThreads;
     class CommandLine;
+    class ShaderSet;
 
     using ReaderWriters = std::vector<ref_ptr<ReaderWriter>>;
 
+    /// Class for passing IO related options to vsg::read/write calls.
     class VSG_DECLSPEC Options : public Inherit<Object, Options>
     {
     public:
@@ -42,6 +43,8 @@ namespace vsg
 
         Options& operator=(const Options& rhs) = delete;
 
+        int compare(const Object& rhs) const override;
+
         /// read command line options, assign values to this options object to later use with reading/writing files
         virtual bool readOptions(CommandLine& arguments);
 
@@ -51,7 +54,7 @@ namespace vsg
         void add(ref_ptr<ReaderWriter> rw = {});
         void add(const ReaderWriters& rws);
 
-        ref_ptr<ObjectCache> objectCache;
+        ref_ptr<SharedObjects> sharedObjects;
         ReaderWriters readerWriters;
         ref_ptr<OperationThreads> operationThreads;
 
@@ -71,21 +74,44 @@ namespace vsg
 
         Path fileCache;
 
-        std::string extensionHint;
+        Path extensionHint;
         bool mapRGBtoRGBAHint = true;
 
-        /// coordinate convention to use for scene graph
+        /// Coordinate convention to use for scene graph
         CoordinateConvention sceneCoordinateConvention = CoordinateConvention::Z_UP;
 
-        /// coordinate convention to assume for specified lower case file formats extensions
-        std::map<vsg::Path, CoordinateConvention> formatCoordinateConventions;
+        /// Coordinate convention to assume for specified lower case file formats extensions
+        std::map<Path, CoordinateConvention> formatCoordinateConventions;
+
+        /// User defined ShaderSet map, loaders should check the available ShaderSet used the name of the type ShaderSet.
+        /// Standard names are :
+        ///     "pbr" will substitute for vsg::createPhysicsBasedRenderingShaderSet()
+        ///     "phong" will substitute for vsg::createPhongShaderSet()
+        ///     "flat" will substitute for vsg::createFlatShadedShaderSet()
+        ///     "text" will substitute for vsg::createTextShaderSet()
+        std::map<std::string, ref_ptr<ShaderSet>> shaderSets;
 
     protected:
         virtual ~Options();
     };
     VSG_type_name(vsg::Options);
 
-    /// convinience function that if a filename has a path, it duplicates the supplied Options object and prepends the path to the new Options::paths, otherwise returns the original Options object.
+    /// convenience function that if a filename has a path, it duplicates the supplied Options object and prepends the path to the new Options::paths, otherwise returns the original Options object.
     extern VSG_DECLSPEC ref_ptr<const vsg::Options> prependPathToOptionsIfRequired(const vsg::Path& filename, ref_ptr<const vsg::Options> options);
+
+    /// return true if the options->extensionHint or filename extension are found in the list of arguments/containers
+    template<typename... Args>
+    bool compatibleExtension(const vsg::Path& filename, const vsg::Options* options, const Args&... args)
+    {
+        if (options && options->extensionHint && contains(options->extensionHint, args...)) return true;
+        return contains(vsg::lowerCaseFileExtension(filename), args...);
+    }
+
+    /// return true if the options->extensionHint is found in the list of arguments/containers
+    template<typename... Args>
+    bool compatibleExtension(const vsg::Options* options, const Args&... args)
+    {
+        return options && options->extensionHint && contains(options->extensionHint, args...);
+    }
 
 } // namespace vsg

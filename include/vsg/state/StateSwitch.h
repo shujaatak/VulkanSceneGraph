@@ -16,6 +16,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+    /// StateSwitch is a StateCommand that provides support, during the RecordTraveral, for applying StateCommand children based on pass a mask.
+    /// Can be used for enable state for specific View's were the StateSwitch child masks are matched the View mask.
     class VSG_DECLSPEC StateSwitch : public Inherit<StateCommand, StateSwitch>
     {
     public:
@@ -24,7 +26,7 @@ namespace vsg
         {
             for (auto& child : sc.children)
             {
-                if ((visitor.traversalMask & (visitor.overrideMask | child.mask)) != 0) child.stateCommand->accept(visitor);
+                if ((visitor.traversalMask & (visitor.overrideMask | child.mask)) != MASK_OFF) child.stateCommand->accept(visitor);
             }
         }
 
@@ -37,11 +39,11 @@ namespace vsg
         void read(Input& input) override;
         void write(Output& output) const override;
 
-        void add(uint32_t mask, ref_ptr<StateCommand> sc) { children.emplace_back(Child{mask, sc}); }
+        void add(Mask mask, ref_ptr<StateCommand> sc) { children.emplace_back(Child{mask, sc}); }
 
         struct Child
         {
-            uint32_t mask;
+            Mask mask = MASK_ALL;
             ref_ptr<StateCommand> stateCommand;
         };
 

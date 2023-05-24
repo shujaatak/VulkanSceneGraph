@@ -11,6 +11,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/core/Exception.h>
+#include <vsg/core/compare.h>
 #include <vsg/io/Options.h>
 #include <vsg/state/Image.h>
 #include <vsg/vk/Context.h>
@@ -37,15 +38,15 @@ Image::Image(ref_ptr<Data> in_data) :
 {
     if (data)
     {
-        auto layout = data->getLayout();
+        auto properties = data->properties;
         auto mipmapOffsets = data->computeMipmapOffsets();
         auto dimensions = data->dimensions();
 
-        uint32_t width = data->width() * layout.blockWidth;
-        uint32_t height = data->height() * layout.blockHeight;
-        uint32_t depth = data->depth() * layout.blockDepth;
+        uint32_t width = data->width() * properties.blockWidth;
+        uint32_t height = data->height() * properties.blockHeight;
+        uint32_t depth = data->depth() * properties.blockDepth;
 
-        switch (layout.imageViewType)
+        switch (properties.imageViewType)
         {
         case (VK_IMAGE_VIEW_TYPE_1D):
             imageType = VK_IMAGE_TYPE_1D;
@@ -73,8 +74,9 @@ Image::Image(ref_ptr<Data> in_data) :
             /* flags = VK_IMAGE_CREATE_1D_ARRAY_COMPATIBLE_BIT; // comment out as Vulkan headers don't yet provide this. */
             break;
         case (VK_IMAGE_VIEW_TYPE_2D_ARRAY):
+            // imageType = VK_IMAGE_TYPE_3D;
+            // flags = VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
             imageType = VK_IMAGE_TYPE_2D;
-            flags = VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
             arrayLayers = depth;
             depth = 1;
             break;
@@ -90,7 +92,7 @@ Image::Image(ref_ptr<Data> in_data) :
             break;
         }
 
-        format = layout.format;
+        format = properties.format;
         mipLevels = static_cast<uint32_t>(mipmapOffsets.size());
         extent = VkExtent3D{width, height, depth};
 
@@ -116,6 +118,29 @@ Image::~Image()
     for (auto& vd : _vulkanData) vd.release();
 }
 
+int Image::compare(const Object& rhs_object) const
+{
+    int result = Object::compare(rhs_object);
+    if (result != 0) return result;
+
+    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+
+    if ((result = compare_pointer(data, rhs.data))) return result;
+
+    if ((result = compare_value(flags, rhs.flags))) return result;
+    if ((result = compare_value(imageType, rhs.imageType))) return result;
+    if ((result = compare_value(format, rhs.format))) return result;
+    if ((result = compare_memory(extent, rhs.extent))) return result;
+    if ((result = compare_value(mipLevels, rhs.mipLevels))) return result;
+    if ((result = compare_value(arrayLayers, rhs.arrayLayers))) return result;
+    if ((result = compare_value(samples, rhs.samples))) return result;
+    if ((result = compare_value(tiling, rhs.tiling))) return result;
+    if ((result = compare_value(usage, rhs.usage))) return result;
+    if ((result = compare_value(sharingMode, rhs.sharingMode))) return result;
+    if ((result = compare_value_container(queueFamilyIndices, rhs.queueFamilyIndices))) return result;
+    return compare_value(initialLayout, rhs.initialLayout);
+}
+
 VkResult Image::bind(DeviceMemory* deviceMemory, VkDeviceSize memoryOffset)
 {
     VulkanData& vd = _vulkanData[deviceMemory->getDevice()->deviceID];
@@ -127,6 +152,18 @@ VkResult Image::bind(DeviceMemory* deviceMemory, VkDeviceSize memoryOffset)
         vd.memoryOffset = memoryOffset;
     }
     return result;
+}
+
+VkResult Image::allocateAndBindMemory(Device* device, VkMemoryPropertyFlags memoryProperties, void* pNextAllocInfo)
+{
+    auto memRequirements = getMemoryRequirements(device->deviceID);
+    auto memory = DeviceMemory::create(device, memRequirements, memoryProperties, pNextAllocInfo);
+    auto [allocated, offset] = memory->reserve(memRequirements.size);
+    if (!allocated)
+    {
+        throw Exception{"Error: Failed to allocate DeviceMemory."};
+    }
+    return bind(memory, offset);
 }
 
 VkMemoryRequirements Image::getMemoryRequirements(uint32_t deviceID) const

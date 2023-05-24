@@ -29,6 +29,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// t_quat template class that a represents quaternion
     template<typename T>
     struct t_quat
     {
@@ -61,6 +62,8 @@ namespace vsg
         template<typename R>
         constexpr explicit t_quat(const t_quat<R>& v) :
             value{static_cast<T>(v.x), static_cast<T>(v.y), static_cast<T>(v.z), static_cast<T>(v.w)} {}
+
+        constexpr t_quat& operator=(const t_quat&) = default;
 
         constexpr std::size_t size() const { return 4; }
 
@@ -138,13 +141,39 @@ namespace vsg
             z = axis.z * sinhalfangle * inversenorm;
             w = coshalfangle;
         }
+
+        explicit operator bool() const noexcept { return value[0] != 0.0 || value[1] != 0.0 || value[2] != 0.0 || value[3] != 0.0; }
     };
 
-    using quat = t_quat<float>;
-    using dquat = t_quat<double>;
+    using quat = t_quat<float>;   /// float quaternion
+    using dquat = t_quat<double>; /// double quaternion
 
     VSG_type_name(vsg::quat);
     VSG_type_name(vsg::dquat);
+
+    template<typename T>
+    constexpr bool operator==(const t_quat<T>& lhs, const t_quat<T>& rhs)
+    {
+        return lhs[0] == rhs[0] && lhs[1] == rhs[1] && lhs[2] == rhs[2] && lhs[3] == rhs[3];
+    }
+
+    template<typename T>
+    constexpr bool operator!=(const t_quat<T>& lhs, const t_quat<T>& rhs)
+    {
+        return lhs[0] != rhs[0] || lhs[1] != rhs[1] || lhs[2] != rhs[2] || lhs[3] != rhs[3];
+    }
+
+    template<typename T>
+    constexpr bool operator<(const t_quat<T>& lhs, const t_quat<T>& rhs)
+    {
+        if (lhs[0] < rhs[0]) return true;
+        if (lhs[0] > rhs[0]) return false;
+        if (lhs[1] < rhs[1]) return true;
+        if (lhs[1] > rhs[1]) return false;
+        if (lhs[2] < rhs[2]) return true;
+        if (lhs[2] > rhs[2]) return false;
+        return lhs[3] < rhs[3];
+    }
 
     template<typename T>
     constexpr t_quat<T> operator-(const t_quat<T>& lhs, const t_quat<T>& rhs)
@@ -155,7 +184,7 @@ namespace vsg
     template<typename T>
     constexpr t_quat<T> conjugate(const t_quat<T>& v)
     {
-        return t_quat<T>(-v[0], -v[1], -v[2], -v[3]);
+        return t_quat<T>(-v[0], -v[1], -v[2], v[3]);
     }
 
     template<typename T>
@@ -168,6 +197,33 @@ namespace vsg
     constexpr t_quat<T> operator+(const t_quat<T>& lhs, const t_quat<T>& rhs)
     {
         return t_quat<T>(lhs[0] + rhs[0], lhs[1] + rhs[1], lhs[2] + rhs[2], lhs[3] + rhs[3]);
+    }
+
+    // Rotate a quaternion by another quaternion
+    template<typename T>
+    constexpr t_quat<T> operator*(const t_quat<T>& lhs, const t_quat<T>& rhs)
+    {
+        t_quat<T> q(rhs[3] * lhs[0] + rhs[0] * lhs[3] + rhs[1] * lhs[2] - rhs[2] * lhs[1],
+                    rhs[3] * lhs[1] - rhs[0] * lhs[2] + rhs[1] * lhs[3] + rhs[2] * lhs[0],
+                    rhs[3] * lhs[2] + rhs[0] * lhs[1] - rhs[1] * lhs[0] + rhs[2] * lhs[3],
+                    rhs[3] * lhs[3] - rhs[0] * lhs[0] - rhs[1] * lhs[1] - rhs[2] * lhs[2]);
+
+        return q;
+    }
+
+    // Rotate a vector by a quaternion
+    template<typename T>
+    constexpr t_vec3<T> operator*(const t_quat<T>& q, const t_vec3<T>& v)
+    {
+        // nVidia SDK implementation
+        t_vec3<T> uv, uuv;
+        t_vec3<T> qvec(q[0], q[1], q[2]);
+        uv = cross(qvec, v);
+        uuv = cross(qvec, uv);
+        T two(2.0);
+        uv *= (two * q[3]);
+        uuv *= two;
+        return v + uv + uuv;
     }
 
     template<typename T>
@@ -205,7 +261,7 @@ namespace vsg
     template<typename T>
     constexpr t_quat<T> inverse(const t_quat<T>& v)
     {
-        t_quat<T> c = conj(v);
+        t_quat<T> c = conjugate(v);
         T inverse_len = static_cast<T>(1.0) / length(v);
         return t_quat<T>(c[0] * inverse_len, c[1] * inverse_len, c[2] * inverse_len, c[3] * inverse_len);
     }

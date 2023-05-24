@@ -20,11 +20,15 @@ namespace vsg
     // forward declare
     class Context;
 
+    /// Buffer encapsulates VkBuffer and VkBufferCreateInfo settings used to set it up.
+    /// Buffer is used map blocks of DeviceMemory for use with BufferInfo associated DescriptorBuffer/BufferView/Vertex/Index arrays.
     class VSG_DECLSPEC Buffer : public Inherit<Object, Buffer>
     {
     public:
         Buffer(VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode);
-        Buffer(Device* device, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode);
+
+        /// Vulkan VkImage handle
+        VkBuffer vk(uint32_t deviceID) const { return _vulkanData[deviceID].buffer; }
 
         // VkBufferCreateInfo settings
         VkBufferCreateFlags flags = 0;
@@ -32,18 +36,18 @@ namespace vsg
         VkBufferUsageFlags usage;
         VkSharingMode sharingMode;
 
-        /// Vulkan VkImage handle
-        VkBuffer vk(uint32_t deviceID) const { return _vulkanData[deviceID].buffer; }
-
         /// return the number of VulkanData entries.
         uint32_t sizeVulkanData() const { return _vulkanData.size(); }
 
         VkResult bind(DeviceMemory* deviceMemory, VkDeviceSize memoryOffset);
 
-        MemorySlots::OptionalOffset reserve(VkDeviceSize in_size, VkDeviceSize alignment) { return _memorySlots.reserve(in_size, alignment); }
-        void release(VkDeviceSize offset, VkDeviceSize in_size) { _memorySlots.release(offset, in_size); }
-        bool full() const { return _memorySlots.full(); }
-        const MemorySlots& memorySlots() const { return _memorySlots; }
+        MemorySlots::OptionalOffset reserve(VkDeviceSize in_size, VkDeviceSize alignment);
+        void release(VkDeviceSize offset, VkDeviceSize in_size);
+
+        bool full() const;
+        size_t maximumAvailableSpace() const;
+        size_t totalAvailableSize() const;
+        size_t totalReservedSize() const;
 
         VkMemoryRequirements getMemoryRequirements(uint32_t deviceID) const;
 
@@ -71,6 +75,7 @@ namespace vsg
 
         vk_buffer<VulkanData> _vulkanData;
 
+        mutable std::mutex _mutex;
         MemorySlots _memorySlots;
     };
     VSG_type_name(vsg::Buffer);

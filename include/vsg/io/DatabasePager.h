@@ -21,7 +21,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <vsg/threading/ActivityStatus.h>
 
-#include <vsg/traversals/CompileTraversal.h>
+#include <vsg/app/CompileManager.h>
 
 #include <condition_variable>
 #include <list>
@@ -30,6 +30,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// Class used by the DatabasePager to keep track of PagedLOD nodes
     class CulledPagedLODs : public Inherit<Object, CulledPagedLODs>
     {
     public:
@@ -49,6 +50,7 @@ namespace vsg
         std::vector<const PagedLOD*> newHighresRequired;
     };
 
+    /// Thread safe queue for tracking PagedLOD that needs to be loaded, compiled or merged by the DatabasePager
     class VSG_DECLSPEC DatabaseQueue : public Inherit<Object, DatabaseQueue>
     {
     public:
@@ -61,22 +63,11 @@ namespace vsg
 
         void add(ref_ptr<PagedLOD> plod);
 
-        // add the plod reference to the queue then set the plod parameter to nullptr to ensure calling thread can't delete it
-        void add_then_reset(ref_ptr<PagedLOD>& plod);
-
-        void add(Nodes& nodes);
+        void add(ref_ptr<PagedLOD> plod, const CompileResult& cr);
 
         ref_ptr<PagedLOD> take_when_available();
 
-        Nodes take_all_when_available();
-
-        Nodes take_all()
-        {
-            std::scoped_lock lock(_mutex);
-            Nodes nodes;
-            nodes.swap(_queue);
-            return nodes;
-        }
+        Nodes take_all(CompileResult& result);
 
     protected:
         virtual ~DatabaseQueue();
@@ -84,10 +75,13 @@ namespace vsg
         std::mutex _mutex;
         std::condition_variable _cv;
         Nodes _queue;
+        CompileResult _compileResult;
         ref_ptr<ActivityStatus> _status;
     };
     VSG_type_name(vsg::DatabaseQueue);
 
+    /// Multi-threaded database pager for reading, compiling loaded PagedLOD subgraphs and updating the scene graph
+    /// with newly loaded subgraphs and pruning expired PageLOD subgraphs
     class VSG_DECLSPEC DatabasePager : public Inherit<Object, DatabasePager>
     {
     public:
@@ -100,14 +94,11 @@ namespace vsg
 
         virtual void request(ref_ptr<PagedLOD> plod);
 
-        virtual void updateSceneGraph(FrameStamp* frameStamp);
-
-        using Semaphores = std::set<ref_ptr<Semaphore>>;
-        Semaphores& getSemaphores() { return _semaphores; }
+        virtual void updateSceneGraph(FrameStamp* frameStamp, CompileResult& cr);
 
         ref_ptr<const Options> options;
 
-        ref_ptr<CompileTraversal> compileTraversal;
+        ref_ptr<CompileManager> compileManager;
 
         std::atomic_uint numActiveRequests{0};
         std::atomic_uint64_t frameCount;
@@ -129,13 +120,9 @@ namespace vsg
         ref_ptr<ActivityStatus> _status;
 
         ref_ptr<DatabaseQueue> _requestQueue;
-        ref_ptr<DatabaseQueue> _compileQueue;
         ref_ptr<DatabaseQueue> _toMergeQueue;
 
         std::list<std::thread> _readThreads;
-        std::list<std::thread> _compileThreads;
-
-        Semaphores _semaphores;
     };
     VSG_type_name(vsg::DatabasePager);
 

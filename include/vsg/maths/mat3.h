@@ -17,6 +17,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// t_mat3 template class that represents a 3x3 matrix.
     template<typename T>
     struct t_mat3
     {
@@ -32,10 +33,9 @@ namespace vsg
                   {0, 0, 1}} {}
 
         constexpr explicit t_mat3(value_type v) :
-            value{{v, 0, 0, 0},
-                  {0, v, 0, 0},
-                  {0, 0, v, 0},
-                  {0, 0, 0, v}} {}
+            value{{v, 0, 0},
+                  {0, v, 0},
+                  {0, 0, v}} {}
 
         constexpr t_mat3(value_type v0, value_type v1, value_type v2, /* column 0 */
                          value_type v3, value_type v4, value_type v5, /* column 1 */
@@ -51,8 +51,15 @@ namespace vsg
                   {v[3], v[4], v[5]},
                   {v[6], v[7], v[8]}} {}
 
+        constexpr t_mat3(const column_type& c0,
+                         const column_type& c1,
+                         const column_type& c2) :
+            value{c0, c1, c2}
+        {
+        }
+
         template<typename R>
-        t_mat3(const t_mat3<R>& rhs)
+        explicit t_mat3(const t_mat3<R>& rhs)
         {
             value[0] = rhs[0];
             value[1] = rhs[1];
@@ -91,8 +98,8 @@ namespace vsg
         const T* data() const { return value[0].data(); }
     };
 
-    using mat3 = t_mat3<float>;
-    using dmat3 = t_mat3<double>;
+    using mat3 = t_mat3<float>;   /// float 3x3 matrix
+    using dmat3 = t_mat3<double>; /// double 3x3 matrix
 
     VSG_type_name(vsg::mat3);
     VSG_type_name(vsg::dmat3);
@@ -145,5 +152,13 @@ namespace vsg
         return t_vec3<T>((lhs[0][0] * rhs[0] + lhs[1][0] * rhs[1] + lhs[2][0] * rhs[2]),
                          (lhs[0][1] * rhs[0] + lhs[1][1] * rhs[1] + lhs[2][1] * rhs[2]),
                          (lhs[0][2] * rhs[0] + lhs[1][2] * rhs[1] + lhs[2][2] * rhs[2]));
+    }
+
+    template<typename T>
+    t_vec3<T> operator*(const t_vec3<T>& lhs, const t_mat3<T>& rhs)
+    {
+        return t_vec3<T>(lhs[0] * rhs[0][0] + lhs[1] * rhs[0][1] + lhs[2] * rhs[0][2],
+                         lhs[0] * rhs[1][0] + lhs[1] * rhs[1][1] + lhs[2] * rhs[1][2],
+                         lhs[0] * rhs[2][0] + lhs[1] * rhs[2][1] + lhs[2] * rhs[2][2]);
     }
 } // namespace vsg

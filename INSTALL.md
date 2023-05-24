@@ -17,17 +17,25 @@
 ---
 
 ## Prerequisites
-* C++17 compliant compiler i.e. g++ 7.3 or later, Clang 6.0 or later, Visual Studio S2017 or later.
-* [Vulkan](https://vulkan.lunarg.com/) 1.1 or later.
-* [CMake](https://www.cmake.org) 3.7 or later.
 
-The above dependency versions are known to work so they've been set as the current minimum, it may be possible to build against older versions. If you find success with older versions let us know and we can update the version info.
+* C++17 compliant compiler i.e. g++ 7.3 or later, Clang 6.0 or later, Visual Studio S2017 or later.
+* [Vulkan](https://vulkan.lunarg.com/) 1.1 or later.  You can use Vulkan (libs and headers) installed from repositories or using VulkanSDK.
+* [CMake](https://www.cmake.org) 3.7 or later.
 
 ---
 
 ## Quick build instructions for Unix from the command line
 
-Command line instructions for default build of static library (.a/.lib) in source:
+### Installing dependencies
+
+* Ubuntu:  
+	`sudo apt-get install cmake-curses-gui g++ git libvulkan-dev`
+
+* Gentoo:  
+	`emerge dev-util/vulkan-tools`
+
+### Build
+Command line instructions for default build of static library (.a) in source:
 
     git clone https://github.com/vsg-dev/VulkanSceneGraph.git
     cd VulkanSceneGraph
@@ -35,7 +43,7 @@ Command line instructions for default build of static library (.a/.lib) in sourc
     make -j 8
     make install
 
-Command line instructions for building shared library (.so/.lib + .dll) out of source:
+Command line instructions for building shared library (.so) out of source:
 
     git clone https://github.com/vsg-dev/VulkanSceneGraph.git
     mkdir vsg-shared-build
@@ -99,23 +107,28 @@ Once you have generated the build system using *cmake* as above, you can list th
     make help
 
 This lists the options:
-
-    ... all (the default if no target is provided)
-	... clean
-	... depend
-	... install/strip
-	... install/local
-	... rebuild_cache
-	... clobber
-	... install
-	... docs
-	... uninstall
-	... build_all_h
-	... list_install_components
-	... cppcheck
-	... clang-format
-	... edit_cache
-	... vsg
+```
+... all (the default if no target is provided)
+... clean
+... depend
+... edit_cache
+... install
+... install/local
+... install/strip
+... list_install_components
+... rebuild_cache
+... build_all_h
+... clang-format
+... clang-format-vsg
+... clobber
+... cppcheck
+... cppcheck-vsg
+... docs
+... docs-vsg
+... uninstall
+... uninstall-vsg
+... vsg
+```
 
 Most of these are standard options which you can look up in CMake and make documentation, the following are ones we've added so require explanation:
 
@@ -159,23 +172,78 @@ For example, a bare minimum CMakeLists.txt file to compile a single file applica
 	set_property(TARGET myapp PROPERTY CXX_STANDARD 17)
 	target_link_libraries(myapp vsg::vsg)
 
+### Using VSG provided cmake macros within your own projects
+
+The build system provides macros that create specific cmake targets to use in their project. Examples include: Setup of common cmake variables, Formatting source code, performing static code analysis, creating API documentation, cleaning up source directories, and removing installed files. Documentation of the available macros (the public ones starting with ```vsg_```) are at https://github.com/vsg-dev/VulkanSceneGraph/blob/master/cmake/vsgMacros.cmake.
+
+For example, a bare minimum CMakeLists.txt file adding the mentioned cmake target would be:
+
+	cmake_minimum_required(VERSION 3.7)
+	find_package(vsg REQUIRED)
+
+	vsg_setup_dir_vars()
+	vsg_setup_build_vars()
+
+	vsg_add_target_clang_format(
+	    FILES
+	        ${PROJECT_SOURCE_DIR}/include/*/*.h
+	        ${PROJECT_SOURCE_DIR}/src/*/*.cpp
+	)
+	vsg_add_target_cppcheck(
+	    FILES
+	        ${PROJECT_SOURCE_DIR}/include/*/*.h
+	        ${PROJECT_SOURCE_DIR}/src/*/*.cpp
+	)
+	vsg_add_target_clobber()
+	vsg_add_target_docs(
+	    FILES
+	        ${PROJECT_SOURCE_DIR}/include/*/*.h
+	)
+	vsg_add_target_uninstall()
+
+	add_executable(myapp "myapp.cpp")
+	set_property(TARGET myapp PROPERTY CXX_STANDARD 17)
+	target_link_libraries(myapp vsg::vsg)
+
+### Using VSG provided cmake macro to generate cmake support files
+
+Projects that install a library must generate some cmake-related files so that the library can be found by ```find_package()```. To simplify the generation of these files, the cmake macro ```vsg_add_cmake_support_files()``` has been added. 
+
+In addition to calling the macro, it requires a template for creating the xxxConfig.cmake file, as given in the following example:
+
+	src/xxx/
+	      CMakeLists.txt
+	      xxxConfig.cmake.in
+
+In the file ``CMakeLists.txt`` the call then looks like this:
+
+	    vsg_add_cmake_support_files(
+	        CONFIG_TEMPLATE xxxConfig.cmake.in
+	    )
+
+Hints for the structure of the template file can be found at https://cmake.org/cmake/help/latest/manual/cmake-packages.7.html#creating-a-package-configuration-file.
+
 ---
 
 ## Detailed instructions for setting up your environment and building for Microsoft Windows
 
-The VSG has one dependency, the Vulkan SDK itself. LunarG provides a convenient installer for the Vulkan SDK and runtime on Windows.
+While not the only route to installing Vulkan libs an headers on Windows the most common approach is to use the Vulkan SDK. LunarG provides a convenient installer for the Vulkan SDK and runtime on Windows.
 
 [Vulkan Downloads](https://vulkan.lunarg.com/sdk/home#windows)
 
-From there download and install the Vulkan SDK (1.1 or later) and the Vulkan runtime. Once installed we need to let CMake know where to find the Vulkan SDK. The VSG uses the VULKAN_SDK environment variable to find the Vulkan SDK so go ahead and add it.
+From there download and install the Vulkan SDK (1.2.162.0 or later) and the Vulkan runtime. Once installed we need to let CMake know where to find the Vulkan SDK. The Vulkan installer should add both ```VK_SDK_PATH``` and ```VULKAN_SDK```. If either of those are not present - add them.
 
-	VULKAN_SDK = C:\VulkanSDK\1.1.85.0
+    VK_SDK_PATH = C:\VulkanSDK\1.2.162.0
+    VULKAN_SDK = C:\VulkanSDK\1.2.162.0
 
 So now we have the Vulkan SDK installed and findable by CMake so we can go ahead and build VSG. Below are simple instructions for downloading the VSG source code, generating a Visual Studio project using CMake and finally building and installing VSG onto your system.
 
     git clone https://github.com/vsg-dev/VulkanSceneGraph.git
     cd VulkanSceneGraph
-    cmake . -G "Visual Studio 15 2017 Win64"
+    mkdir build & cd build
+    cmake .. -G "Visual Studio 15 2017 Win64"
+    cmake .. -G "Visual Studio 16 2019" -A x64
+    cmake .. -G "Visual Studio 19 2022" -A x64
 
 After running CMake open the generated VSG.sln file and build the All target. Once built you can run the install target. If you are using the default CMake install path (in Program Files folder), ensure you have started Visual Studio as administrator otherwise the install will fail.
 
@@ -215,7 +283,7 @@ So now we have the Android NDK installed lets go ahead and fetch the VSG source 
 	-DCMAKE_ANDROID_NDK=/location/of/Android/sdk/ndk-bundle \
 	-DCMAKE_INSTALL_PREFIX=/usr/local/android
 
-Make sure you change the -DCMAKE_ANDROID_NDK path to the path of your NDK, typically this is the 'Android SDK Location'/ndk-bundle. Also note the -DCMAKE_INSTALL_PREFIX. This is where the VSG library and header will be installed. It's useful to change this from the default to seperate your Android version from your native OS version. Depending where you put it you may need to manually create the top level folder first depending on permissions.
+Make sure you change the -DCMAKE_ANDROID_NDK path to the path of your NDK, typically this is the 'Android SDK Location'/ndk-bundle. Also note the -DCMAKE_INSTALL_PREFIX. This is where the VSG library and header will be installed. It's useful to change this from the default to separate your Android version from your native OS version. Depending where you put it you may need to manually create the top level folder first depending on permissions.
 
 Now we've generated the make files we can simply run
 
@@ -227,7 +295,7 @@ That's it, you've built VSG for Android and installed the required headers and l
 
 ## Detailed instructions for setting up your environment and building for macOS
 
-macOS does not natively support Vulkan. However the excellent MoltenVK libary has been developed which translates Vulkan calls into the Metal equivalents allowing you to run Vulkan applications on macOS and iOS. This can be downloaded from the LunarG website and has been packaged in a way it's extremely similar to the other platform sdks.
+macOS does not natively support Vulkan. However the excellent MoltenVK library has been developed which translates Vulkan calls into the Metal equivalents allowing you to run Vulkan applications on macOS and iOS. This can be downloaded from the LunarG website and has been packaged in a way it's extremely similar to the other platform sdks.
 
 [Vulkan Downloads](https://vulkan.lunarg.com/sdk/home#mac)
 
@@ -260,7 +328,3 @@ That's it, we've installed the MoltenVK sdk, built VSG and prepared are machine 
 **Important Note!**
 
 Xcode typically ignores the system environment variables, so when running a VSG application from within Xcode you may run into issues. One solution is to add the environment variables to to the run scheme. This can be done by going to 'Product>Scheme>Edit Scheme>Arguments. Then added the above mentioned environment variables.
-
-
-
-

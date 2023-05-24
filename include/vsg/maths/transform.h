@@ -12,57 +12,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/core/ConstVisitor.h>
-#include <vsg/maths/mat3.h>
-#include <vsg/maths/mat4.h>
-#include <vsg/maths/quat.h>
-#include <vsg/maths/vec3.h>
-
-#include <cmath>
+#include <vsg/maths/common.h>
 
 namespace vsg
 {
-    constexpr float PIf = 3.14159265358979323846f;
-    constexpr double PI = 3.14159265358979323846;
-
-    /// convert degrees to radians
-    constexpr float radians(float degrees) noexcept { return degrees * (PIf / 180.0f); }
-    constexpr double radians(double degrees) noexcept { return degrees * (PI / 180.0); }
-
-    /// convert radians to degrees
-    constexpr float degrees(float radians) noexcept { return radians * (180.0f / PIf); }
-    constexpr double degrees(double radians) noexcept { return radians * (180.0 / PI); }
-
-    /// Hermite interpolation between edge0 and edge1
-    template<typename T>
-    T smoothstep(T edge0, T edge1, T x)
-    {
-        if (x <= edge0)
-            return edge0;
-        else if (x >= edge1)
-            return edge1;
-        double r = (x - edge0) / (edge1 - edge0);
-        return edge0 + (r * r * (3.0 - 2.0 * r)) * (edge1 - edge0);
-    }
-
-    /// Hermite interpolation between 0.0 and 1.0
-    template<typename T>
-    T smoothstep(T r)
-    {
-        if (r <= 0.0)
-            return 0.0;
-        else if (r >= 1.0)
-            return 1.0;
-        return r * r * (3.0 - 2.0 * r);
-    }
-
-    template<typename T>
-    T mix(T start, T end, T r)
-    {
-        T one_minus_r = 1.0 - r;
-        return start * one_minus_r + end * r;
-    }
-
+    /// create a 4x4 matrix that represents the rotation by a quaternion
     template<typename T>
     constexpr t_mat4<T> rotate(const t_quat<T>& q)
     {
@@ -86,6 +40,7 @@ namespace vsg
                          zero, zero, zero, 1.0);
     }
 
+    /// create a 4x4 matrix that represents the rotation by a radian angle around an x, y, z axis
     template<typename T>
     t_mat4<T> rotate(T angle_radians, T x, T y, T z)
     {
@@ -98,12 +53,14 @@ namespace vsg
                          0, 0, 0, 1);
     }
 
+    /// create a 4x4 matrix that represents the rotation by a radian angle around an vec3 axis
     template<typename T>
     t_mat4<T> rotate(T angle_radians, const t_vec3<T>& v)
     {
         return rotate(angle_radians, v.value[0], v.value[1], v.value[2]);
     }
 
+    /// create a 4x4 matrix that represents the translation by x, y, z
     template<typename T>
     constexpr t_mat4<T> translate(T x, T y, T z)
     {
@@ -113,12 +70,24 @@ namespace vsg
                          x, y, z, 1);
     }
 
+    /// create a 4x4 matrix that represents the translation by vec3
     template<typename T>
     constexpr t_mat4<T> translate(const t_vec3<T>& v)
     {
         return translate(v.value[0], v.value[1], v.value[2]);
     }
 
+    /// create a 4x4 matrix that represents the scale by {s, s, s}
+    template<typename T>
+    constexpr t_mat4<T> scale(T s)
+    {
+        return t_mat4<T>(s, 0, 0, 0,
+                         0, s, 0, 0,
+                         0, 0, s, 0,
+                         0, 0, 0, 1);
+    }
+
+    /// create a 4x4 matrix that represents the scale by sx, sy, zz
     template<typename T>
     constexpr t_mat4<T> scale(T sx, T sy, T sz)
     {
@@ -128,12 +97,23 @@ namespace vsg
                          0, 0, 0, 1);
     }
 
+    /// create a 4x4 matrix that represents the scale by vec3
     template<typename T>
     constexpr t_mat4<T> scale(const t_vec3<T>& v)
     {
         return scale(v.value[0], v.value[1], v.value[2]);
     }
 
+    /// transpose a 3x3 matrix
+    template<typename T>
+    constexpr t_mat3<T> transpose(const t_mat3<T>& m)
+    {
+        return t_mat3<T>(m[0][0], m[1][0], m[2][0],
+                         m[0][1], m[1][1], m[2][1],
+                         m[0][2], m[1][2], m[2][2]);
+    }
+
+    /// transpose a 4x4 matrix
     template<typename T>
     constexpr t_mat4<T> transpose(const t_mat4<T>& m)
     {
@@ -143,26 +123,40 @@ namespace vsg
                          m[0][3], m[1][3], m[2][3], m[3][3]);
     }
 
-    // Vulkan style 0 to 1 depth range
+    /// create a 4x4 matrix for an Reverse depth perspective matrix,
+    /// Reverse depth convention: 1 to 0 depth range. Y NDC coordinates are inverted in Vulkan.
+    /// For best precision we record setting up Windows with windowTraits->depthFormat = VK_FORMAT_D32_SFLOAT;
+    /// Background reading : https://developer.nvidia.com/content/depth-precision-visualized
+    //.                      https://vincent-p.github.io/posts/vulkan_perspective_matrix/
     template<typename T>
     constexpr t_mat4<T> perspective(T fovy_radians, T aspectRatio, T zNear, T zFar)
     {
         T f = static_cast<T>(1.0 / std::tan(fovy_radians * 0.5));
-        T r = static_cast<T>(1.0 / (zNear - zFar));
+        T r = static_cast<T>(1.0 / (zFar - zNear));
         return t_mat4<T>(f / aspectRatio, 0, 0, 0,
                          0, -f, 0, 0,
-                         0, 0, (zFar)*r, -1,
+                         0, 0, zNear * r, -1,
                          0, 0, (zFar * zNear) * r, 0);
     }
 
-    // from vulkan cookbook
+    /// create a 4x4 matrix for an Reverse depth perspective matrix, convention: 1 to 0 depth range. Y NDC coordinates are inverted in Vulkan.
+    template<typename T>
+    constexpr t_mat4<T> perspective(T left, T right, T bottom, T top, T zNear, T zFar)
+    {
+        return t_mat4<T>(2.0 * zNear / (right - left), 0.0, 0.0, 0.0,
+                         0.0, 2.0 * zNear / (bottom - top), 0.0, 0.0,
+                         (right + left) / (right - left), (bottom + top) / (bottom - top), zNear / (zFar - zNear), -1.0,
+                         0.0, 0.0, zNear * zFar / (zFar - zNear), 0.0);
+    }
+
+    /// create a 4x4 matrix for an orthographic projection, from vulkan cookbook with reverse depth
     template<typename T>
     constexpr t_mat4<T> orthographic(T left, T right, T bottom, T top, T zNear, T zFar)
     {
         return t_mat4<T>(2.0 / (right - left), 0.0, 0.0, 0.0,
                          0.0, 2.0 / (bottom - top), 0.0, 0.0,
-                         0.0, 0.0, 1.0 / (zNear - zFar), 0.0,
-                         -(right + left) / (right - left), -(bottom + top) / (bottom - top), zNear / (zNear - zFar), 1.0);
+                         0.0, 0.0, 1.0 / (zFar - zNear), 0.0,
+                         -(right + left) / (right - left), -(bottom + top) / (bottom - top), zFar / (zFar - zNear), 1.0);
     }
 
     template<typename T>
@@ -195,6 +189,12 @@ namespace vsg
     /// return true if required and matrix modified, return false if no transformation is required.
     extern VSG_DECLSPEC bool transform(CoordinateConvention source, CoordinateConvention destination, dmat4& matrix);
 
+    /// invert the top left 3x3 portion of a float 4x4 matrix.
+    extern VSG_DECLSPEC mat3 inverse_3x3(const mat4& m);
+
+    /// invert the top left 3x3 portion of a double 4x4 matrix.
+    extern VSG_DECLSPEC dmat3 inverse_3x3(const dmat4& m);
+
     /// fast float matrix inversion that use assumes the matrix is composed of only scales, rotations and translations forming a 4x3 matrix.
     extern VSG_DECLSPEC mat4 inverse_4x3(const mat4& m);
 
@@ -204,7 +204,7 @@ namespace vsg
     /// general purpose 4x4 float matrix inversion.
     extern VSG_DECLSPEC mat4 inverse_4x4(const mat4& m);
 
-    /// general purpose 4x4 float matrix inversion.
+    /// general purpose 4x4 double matrix inversion.
     extern VSG_DECLSPEC dmat4 inverse_4x4(const dmat4& m);
 
     /// matrix float inversion with automatic selection of inverse_4x3 when appropriate, otherwise uses inverse_4x4
@@ -213,30 +213,44 @@ namespace vsg
     /// double matrix inversion with automatic selection of inverse_4x3 when appropriate, otherwise uses inverse_4x4
     extern VSG_DECLSPEC dmat4 inverse(const dmat4& m);
 
+    /// compute determinant of float matrix
+    extern VSG_DECLSPEC float determinant(const mat4& m);
+
+    /// compute determinant of double matrix
+    extern VSG_DECLSPEC double determinant(const dmat4& m);
+
+    /// decompose float matrix into translation, rotation and scale components.
+    /// maps to TRS form: vsg::translate(translation) * vsg::rotate(rotation) * vsg::scale(scale);
+    /// assumes matrix has no skew or perspective components
+    extern VSG_DECLSPEC bool decompose(const mat4& m, vec3& translation, quat& rotation, vec3& scale);
+
+    /// decompose double matrix into translation, rotation and scale components.
+    /// maps to TRS form: vsg::translate(translation) * vsg::rotate(rotation) * vsg::scale(scale);
+    /// assumes matrix has no skew or perspective components
+    extern VSG_DECLSPEC bool decompose(const dmat4& m, dvec3& translation, dquat& rotation, dvec3& scale);
+
     /// compute the bounding sphere that encloses a frustum defined by specified float ModelViewMatrixProjection
     extern VSG_DECLSPEC sphere computeFrustumBound(const mat4& m);
 
     /// compute the bounding sphere that encloses a frustum defined by specified double ModelViewMatrixProjection
     extern VSG_DECLSPEC dsphere computeFrustumBound(const dmat4& m);
 
-    struct ComputeTransform : public ConstVisitor
+    /// visitor that computes a transform matrix, accumulating the result in order of objects visited
+    /// usage:  auto matrix = vsg::visit<vsg::ComputeTransform>(nodePath).matrix;
+    struct VSG_DECLSPEC ComputeTransform : public ConstVisitor
     {
         dmat4 matrix;
 
         void apply(const Transform& transform) override;
         void apply(const MatrixTransform& mt) override;
+        void apply(const Camera& camera) override;
     };
 
-    // convinience function for accumulating the transforms in scene graph along a specified nodePath.
+    /// convenience function for accumulating the transforms in scene graph along a specified nodePath.
     template<typename T>
     dmat4 computeTransform(const T& nodePath)
     {
-        ComputeTransform ct;
-        for (auto& node : nodePath)
-        {
-            node->accept(ct);
-        }
-        return ct.matrix;
+        return visit<ComputeTransform>(nodePath).matrix;
     }
 
 } // namespace vsg

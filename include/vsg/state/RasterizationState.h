@@ -16,10 +16,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+
+    /// RasterizationState encapsulates to VkPipelineRasterizationStateCreateInfo settings passed when setting up GraphicsPipeline
     class VSG_DECLSPEC RasterizationState : public Inherit<GraphicsPipelineState, RasterizationState>
     {
     public:
         RasterizationState();
+        RasterizationState(const RasterizationState& rs);
 
         /// VkPipelineRasterizationStateCreateInfo settings
         VkBool32 depthClampEnable = VK_FALSE;
@@ -32,6 +35,8 @@ namespace vsg
         float depthBiasClamp = 0.0f;
         float depthBiasSlopeFactor = 1.0f;
         float lineWidth = 1.0f;
+
+        int compare(const Object& rhs) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;

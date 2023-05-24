@@ -15,6 +15,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/commands/BindVertexBuffers.h>
 #include <vsg/commands/Draw.h>
 #include <vsg/nodes/StateGroup.h>
+#include <vsg/state/BindDescriptorSet.h>
 #include <vsg/state/DescriptorBuffer.h>
 #include <vsg/text/TextTechnique.h>
 
@@ -23,16 +24,15 @@ namespace vsg
     struct LayoutStruct
     {
         vec3 position = vec3(0.0f, 0.0f, 0.0f);
-        float pad0;
+        float billboardAutoScaleDistance = 0.0;
         vec3 horizontal = vec3(1.0f, 0.0f, 0.0f);
-        float pad1;
+        float horizontalAlignment = 0.0;
         vec3 vertical = vec3(0.0f, 1.0f, 0.0f);
-        float pad2;
+        float verticalAlignment = 0.0;
         vec4 color = vec4(1.0f, 1.0f, 1.0f, 1.0f);
         vec4 outlineColor = vec4(0.0f, 0.0f, 0.0f, 1.0f);
         float outlineWidth = 0.0f;
     };
-
     VSG_value(TextLayoutValue, LayoutStruct);
 
     class VSG_DECLSPEC GpuLayoutTechnique : public Inherit<TextTechnique, GpuLayoutTechnique>
@@ -48,23 +48,13 @@ namespace vsg
         void traverse(ConstVisitor& visitor) const override { t_traverse(*this, visitor); }
         void traverse(RecordTraversal& visitor) const override { t_traverse(*this, visitor); }
 
-        void setup(Text* text, uint32_t minimumAllocation = 0) override;
-
-        /// rendering state used to set up graphics pipeline and descriptor sets, assigned to Font to allow it be shared
-        struct VSG_DECLSPEC GpuLayoutState : public Inherit<Object, GpuLayoutState>
-        {
-            explicit GpuLayoutState(Font* font);
-
-            bool match() const { return true; }
-
-            ref_ptr<PipelineLayout> pipelineLayout;
-            ref_ptr<DescriptorSetLayout> textArrayDescriptorSetLayout;
-            ref_ptr<BindGraphicsPipeline> bindGraphicsPipeline;
-            ref_ptr<BindDescriptorSet> bindDescriptorSet;
-        };
+        void setup(Text* text, uint32_t minimumAllocation = 0, ref_ptr<const Options> options = {}) override;
+        void setup(TextGroup* textGroup, uint32_t minimumAllocation = 0, ref_ptr<const Options> options = {}) override;
+        dbox extents() const override { return textExtents; }
 
         // implementation data structure
-        ref_ptr<StateGroup> scenegraph;
+        dbox textExtents;
+        ref_ptr<Node> scenegraph;
 
         ref_ptr<vec3Array> vertices;
         ref_ptr<Draw> draw;
@@ -74,9 +64,7 @@ namespace vsg
         ref_ptr<DescriptorBuffer> textDescriptor;
         ref_ptr<DescriptorBuffer> layoutDescriptor;
         ref_ptr<BindDescriptorSet> bindTextDescriptorSet;
-
         ref_ptr<BindVertexBuffers> bindVertexBuffers;
-        ref_ptr<GpuLayoutState> sharedRenderingState;
     };
     VSG_type_name(vsg::GpuLayoutTechnique);
 

@@ -18,10 +18,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// BottomLevelAccelerationStructure encapsulates bottom level acceleration structure.
     class VSG_DECLSPEC BottomLevelAccelerationStructure : public Inherit<AccelerationStructure, BottomLevelAccelerationStructure>
     {
     public:
-        explicit BottomLevelAccelerationStructure(Device* device, Allocator* allocator = nullptr);
+        explicit BottomLevelAccelerationStructure(Device* device);
 
         void compile(Context& context) override;
 
@@ -31,5 +32,6 @@ namespace vsg
         // compiled data
         std::vector<VkAccelerationStructureGeometryKHR> _vkGeometries;
     };
+    VSG_type_name(vsg::BottomLevelAccelerationStructure);
 
 } // namespace vsg

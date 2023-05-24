@@ -16,14 +16,19 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+
+    /// TessellationState encapsulates to VkPipelineTessellationStateCreateInfo settings passed when setting up GraphicsPipeline
     class VSG_DECLSPEC TessellationState : public Inherit<GraphicsPipelineState, TessellationState>
     {
     public:
         TessellationState(uint32_t in_patchControlPoints = 1);
+        TessellationState(const TessellationState& ts);
 
         /// VkPipelineTessellationStateCreateInfo settings
         /// patchControlPoints must be greater than zero and less than or equal to VkPhysicalDeviceLimits::maxTessellationPatchSize
         uint32_t patchControlPoints = 1;
+
+        int compare(const Object& rhs) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;

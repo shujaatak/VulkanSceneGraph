@@ -13,25 +13,25 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/core/ref_ptr.h>
-
 #include <vsg/nodes/Node.h>
 
 #include <vector>
 
 namespace vsg
 {
+
     /// Switch node for toggling on/off recording of children.
     class VSG_DECLSPEC Switch : public Inherit<Node, Switch>
     {
     public:
-        explicit Switch(Allocator* allocator = nullptr);
+        explicit Switch();
 
         template<class N, class V>
         static void t_traverse(N& node, V& visitor)
         {
             for (auto& child : node.children)
             {
-                if ((visitor.traversalMask & (visitor.overrideMask | child.mask)) != 0) child.node->accept(visitor);
+                if ((visitor.traversalMask & (visitor.overrideMask | child.mask)) != MASK_OFF) child.node->accept(visitor);
             }
         }
 
@@ -44,7 +44,7 @@ namespace vsg
 
         struct Child
         {
-            uint32_t mask = 0xffffff;
+            Mask mask = MASK_ALL;
             ref_ptr<Node> node;
         };
 
@@ -52,7 +52,7 @@ namespace vsg
         Children children;
 
         /// add a child to the back of the children list.
-        void addChild(uint32_t mask, ref_ptr<Node> child);
+        void addChild(Mask mask, ref_ptr<Node> child);
 
         /// add a child to the back of the children list.
         void addChild(bool enabled, ref_ptr<Node> child);
@@ -68,6 +68,6 @@ namespace vsg
     };
     VSG_type_name(vsg::Switch);
 
-    inline uint32_t boolToMask(bool enabled) { return enabled ? uint32_t(0xffffff) : uint32_t(0x0); }
+    inline Mask boolToMask(bool enabled) { return enabled ? MASK_ALL : MASK_OFF; }
 
 } // namespace vsg

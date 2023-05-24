@@ -43,24 +43,29 @@ namespace vsg
         Value() :
             _value{} { dirty(); }
         Value(const Value& rhs) :
-            _value(rhs._value) { dirty(); }
+            Data(rhs), _value(rhs._value) { dirty(); }
         explicit Value(const value_type& in_value) :
             _value(in_value) { dirty(); }
 
         template<typename... Args>
-        explicit Value(Args... args) :
+        explicit Value(Args&&... args) :
             _value(args...) { dirty(); }
 
         template<typename... Args>
-        static ref_ptr<Value> create(Args... args)
+        static ref_ptr<Value> create(Args&&... args)
         {
             return ref_ptr<Value>(new Value(args...));
+        }
+
+        ref_ptr<Data> clone() const override
+        {
+            return ref_ptr<Value>(new Value(*this));
         }
 
         std::size_t sizeofObject() const noexcept override { return sizeof(Value); }
         const char* className() const noexcept override { return type_name<Value>(); }
         const std::type_info& type_info() const noexcept override { return typeid(*this); }
-        bool is_compatible(const std::type_info& type) const noexcept override { return typeid(Value) == type ? true : Data::is_compatible(type); }
+        bool is_compatible(const std::type_info& type) const noexcept override { return typeid(Value) == type || Data::is_compatible(type); }
 
         // implementation provided by Visitor.h
         void accept(Visitor& visitor) override;
@@ -69,26 +74,52 @@ namespace vsg
         void read(Input& input) override
         {
             Data::read(input);
-            input.read("Value", _value);
+            if (input.version_greater_equal(0, 6, 1))
+                input.read("value", _value);
+            else
+                input.read("Value", _value);
             dirty();
         }
 
         void write(Output& output) const override
         {
             Data::write(output);
-            output.write("Value", _value);
+            if (output.version_greater_equal(0, 6, 1))
+                output.write("value", _value);
+            else
+                output.write("Value", _value);
         }
 
-        std::size_t valueSize() const override { return sizeof(value_type); }
+        std::size_t valueSize() const override
+        {
+            if constexpr (std::is_same_v<T, std::string>)
+                return _value.size();
+            else
+                return sizeof(value_type);
+        }
         std::size_t valueCount() const override { return 1; }
 
-        std::size_t dataSize() const override { return sizeof(value_type); }
+        bool dataAvailable() const override { return true; }
+        std::size_t dataSize() const override { return valueSize(); }
 
-        void* dataPointer() override { return &_value; }
-        const void* dataPointer() const override { return &_value; }
+        void* dataPointer() override
+        {
+            if constexpr (std::is_same_v<T, std::string>)
+                return _value.data();
+            else
+                return &_value;
+        }
 
-        void* dataPointer(size_t) override { return &_value; }
-        const void* dataPointer(size_t) const override { return &_value; }
+        const void* dataPointer() const override
+        {
+            if constexpr (std::is_same_v<T, std::string>)
+                return _value.data();
+            else
+                return &_value;
+        }
+
+        void* dataPointer(size_t) override { return dataPointer(); }
+        const void* dataPointer(size_t) const override { return dataPointer(); }
 
         void* dataRelease() override { return nullptr; }
 
@@ -128,7 +159,7 @@ namespace vsg
     void Object::setValue(const std::string& key, const T& value)
     {
         using ValueT = Value<T>;
-        setObject(key, new ValueT(value));
+        setObject(key, ValueT::create(value));
     }
 
     template<typename T>
@@ -148,7 +179,7 @@ namespace vsg
         }
     }
 
-    /// convience function for getting a value from the first object with the named value, falling back to specififed defaultValue when none is available.
+    /// convenience function for getting a value from the first object with the named value, falling back to specified defaultValue when none is available.
     /// usage:   auto flag = vsg::value<bool>(false, "flag", object1);
     /// usage:   auto angle = vsg::value<float>(0.0f, "angle", object1, object2);
     template<typename T, typename... Args>
@@ -160,6 +191,7 @@ namespace vsg
     }
 
     VSG_value(stringValue, std::string);
+
     VSG_value(boolValue, bool);
     VSG_value(intValue, int);
     VSG_value(uintValue, unsigned int);
@@ -174,13 +206,25 @@ namespace vsg
     VSG_value(dvec3Value, dvec3);
     VSG_value(dvec4Value, dvec4);
 
+    VSG_value(bvec2Value, bvec2);
+    VSG_value(bvec3Value, bvec3);
+    VSG_value(bvec4Value, bvec4);
+
     VSG_value(ubvec2Value, ubvec2);
     VSG_value(ubvec3Value, ubvec3);
     VSG_value(ubvec4Value, ubvec4);
 
+    VSG_value(svec2Value, svec2);
+    VSG_value(svec3Value, svec3);
+    VSG_value(svec4Value, svec4);
+
     VSG_value(usvec2Value, usvec2);
     VSG_value(usvec3Value, usvec3);
     VSG_value(usvec4Value, usvec4);
+
+    VSG_value(ivec2Value, ivec2);
+    VSG_value(ivec3Value, ivec3);
+    VSG_value(ivec4Value, ivec4);
 
     VSG_value(uivec2Value, uivec2);
     VSG_value(uivec3Value, uivec3);

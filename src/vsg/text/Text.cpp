@@ -11,6 +11,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/core/Array2D.h>
+#include <vsg/io/Logger.h>
 #include <vsg/io/read.h>
 #include <vsg/io/write.h>
 #include <vsg/state/DescriptorImage.h>
@@ -19,7 +20,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/text/StandardLayout.h>
 #include <vsg/text/Text.h>
 
-#include <iostream>
+#include "shaders/text_ShaderSet.cpp"
 
 using namespace vsg;
 
@@ -28,11 +29,17 @@ void Text::read(Input& input)
     Node::read(input);
 
     input.readObject("font", font);
+
+    if (input.version_greater_equal(0, 5, 2))
+    {
+        input.readObject("shaderSet", shaderSet);
+    }
+
     input.readObject("technique", technique);
     input.readObject("layout", layout);
     input.readObject("text", text);
 
-    setup();
+    setup(0, input.options);
 }
 
 void Text::write(Output& output) const
@@ -40,15 +47,60 @@ void Text::write(Output& output) const
     Node::write(output);
 
     output.writeObject("font", font);
+
+    if (output.version_greater_equal(0, 5, 2))
+    {
+        output.writeObject("shaderSet", shaderSet);
+    }
+
     output.writeObject("technique", technique);
     output.writeObject("layout", layout);
     output.writeObject("text", text);
 }
 
-void Text::setup(uint32_t minimumAllocation)
+void Text::setup(uint32_t minimumAllocation, ref_ptr<const Options> options)
 {
     if (!layout) layout = StandardLayout::create();
     if (!technique) technique = CpuLayoutTechnique::create();
 
-    technique->setup(this, minimumAllocation);
+    technique->setup(this, minimumAllocation, options);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// createTextShaderSet
+//
+ref_ptr<ShaderSet> vsg::createTextShaderSet(ref_ptr<const Options> options)
+{
+    if (options)
+    {
+        // check if a ShaderSet has already been assigned to the options object, if so return it
+        if (auto itr = options->shaderSets.find("text"); itr != options->shaderSets.end()) return itr->second;
+    }
+
+    return text_ShaderSet();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// CountGlyphs
+//
+void CountGlyphs::apply(const stringValue& text)
+{
+    count += text.value().size();
+}
+
+void CountGlyphs::apply(const ubyteArray& text)
+{
+    count += text.size();
+}
+
+void CountGlyphs::apply(const ushortArray& text)
+{
+    count += text.size();
+}
+
+void CountGlyphs::apply(const uintArray& text)
+{
+    count += text.size();
 }

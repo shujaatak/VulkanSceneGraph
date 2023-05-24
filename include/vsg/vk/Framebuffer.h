@@ -18,6 +18,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// Framebuffer encapsulates vkFramebuffer used a rendering target associated with Window or for render to texture
     class VSG_DECLSPEC Framebuffer : public Inherit<Object, Framebuffer>
     {
     public:
@@ -38,6 +39,8 @@ namespace vsg
         uint32_t width() const { return _width; }
         uint32_t height() const { return _height; }
         uint32_t layers() const { return _layers; }
+
+        VkExtent2D extent2D() const { return VkExtent2D{_width, _height}; }
 
     protected:
         virtual ~Framebuffer();

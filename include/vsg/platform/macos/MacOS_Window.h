@@ -14,7 +14,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #define VK_USE_PLATFORM_MACOS_MVK
 
-#include <vsg/viewer/Window.h>
+#include <vsg/app/Window.h>
 #include <vsg/ui/KeyEvent.h>
 
 @class NSEvent;
@@ -22,24 +22,30 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 @class vsg_MacOS_NSView;
 @class vsg_MacOS_NSWindow;
 
+#import <Cocoa/Cocoa.h>
+
 namespace vsgMacOS
 {
     extern vsg::Names getInstanceExtensions();
+    using KeySymbolState = std::pair<vsg::KeySymbol,bool>;
+    using ModifierKeyChanges = std::vector< KeySymbolState >;
 
+    /// KeyboardMap maps macOS keyboard events to vsg::KeySymbol
     class KeyboardMap : public vsg::Object
     {
     public:
         KeyboardMap();
 
         using kVKKeyCodeToKeySymbolMap = std::map<unsigned short, vsg::KeySymbol>;
-
         bool getKeySymbol(NSEvent* anEvent, vsg::KeySymbol& keySymbol, vsg::KeySymbol& modifiedKeySymbol, vsg::KeyModifier& keyModifier);
+        void getModifierKeyChanges(NSEvent* anEvent, ModifierKeyChanges& changes);
 
     protected:
-        kVKKeyCodeToKeySymbolMap _keycodeMap;
+        kVKKeyCodeToKeySymbolMap _vk2vsg;
+        NSEventModifierFlags _lastFlags;
     };
 
-
+    /// MacOS_Window implements macOS specific window creation, event handling and vulkan Surface setup.
     class MacOS_Window : public vsg::Inherit<vsg::Window, MacOS_Window>
     {
     public:

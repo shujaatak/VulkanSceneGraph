@@ -18,12 +18,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// simple material struct for passing material settings as uniform value to fragment shader
     struct material
     {
         vec4 ambientColor;
         vec4 diffuseColor;
         vec4 specularColor;
-        float shininess;
+        float shininess{100.0f};
 
         void read(vsg::Input& input)
         {
@@ -48,13 +49,15 @@ namespace vsg
     VSG_value(materialValue, material);
     VSG_array(materialArray, material);
 
+    /// PhongMaterial struct for passing material settings, suitable for phong lighting model, as uniform value to fragment shader
+    /// Used in conjunction with vsg::createPhongShaderSet().
     struct PhongMaterial
     {
-        vec4 ambient{0.0f, 0.0f, 0.0f, 1.0f};
-        vec4 diffuse{1.0f, 1.0f, 1.0f, 1.0f};
-        vec4 specular{0.0f, 0.0f, 0.0f, 1.0f};
-        vec4 emissive{0.0f, 0.0f, 0.0f, 1.0f};
-        float shininess{0.0f};
+        vec4 ambient{1.0f, 1.0f, 1.0f, 1.0f};
+        vec4 diffuse{0.9f, 0.9f, 0.9f, 1.0f};
+        vec4 specular{0.2f, 0.2f, 0.2f, 1.0f};
+        vec4 emissive{0.0f, 0.0f, 0.0f, 0.0f};
+        float shininess{100.0f};
         float alphaMask{1.0f};
         float alphaMaskCutoff{0.5f};
 
@@ -87,12 +90,14 @@ namespace vsg
     VSG_value(PhongMaterialValue, PhongMaterial);
     VSG_array(PhongMaterialArray, PhongMaterial);
 
+    /// PbrMaterial struct for passing material settings, suitable for phong lighting model, as uniform value to fragment shader
+    /// Used in conjunction with vsg::createPhysicsBasedRenderingShaderSet().
     struct PbrMaterial
     {
         vec4 baseColorFactor{1.0f, 1.0f, 1.0f, 1.0f};
         vec4 emissiveFactor{0.0f, 0.0f, 0.0f, 1.0f};
-        vec4 diffuseFactor{1.0f, 1.0f, 1.0f, 1.0f};
-        vec4 specularFactor{0.0f, 0.0f, 0.0f, 1.0f};
+        vec4 diffuseFactor{0.9f, 0.9f, 0.9f, 1.0f};
+        vec4 specularFactor{0.2f, 0.2f, 0.2f, 1.0f};
         float metallicFactor{1.0f};
         float roughnessFactor{1.0f};
         float alphaMask{1.0f};

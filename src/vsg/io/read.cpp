@@ -10,12 +10,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/io/ObjectCache.h>
 #include <vsg/io/VSG.h>
+#include <vsg/io/glsl.h>
 #include <vsg/io/read.h>
 #include <vsg/io/spirv.h>
-
+#include <vsg/io/tile.h>
+#include <vsg/io/txt.h>
 #include <vsg/threading/OperationThreads.h>
+#include <vsg/utils/SharedObjects.h>
 
 using namespace vsg;
 
@@ -29,6 +31,7 @@ ref_ptr<Object> vsg::read(const Path& filename, ref_ptr<const Options> options)
                 auto object = readerWriter->read(filename, options);
                 if (object) return object;
             }
+            return {};
         }
 
         auto ext = vsg::lowerCaseFileExtension(filename);
@@ -43,6 +46,16 @@ ref_ptr<Object> vsg::read(const Path& filename, ref_ptr<const Options> options)
             spirv rw;
             return rw.read(filename, options);
         }
+        else if (glsl::extensionSupported(ext))
+        {
+            glsl rw;
+            return rw.read(filename, options);
+        }
+        else if (txt::extensionSupported(ext))
+        {
+            txt rw;
+            return rw.read(filename, options);
+        }
         else
         {
             // no means of loading file
@@ -50,21 +63,15 @@ ref_ptr<Object> vsg::read(const Path& filename, ref_ptr<const Options> options)
         }
     };
 
-    if (options && options->objectCache && options->objectCache->suitable(filename))
+    if (options && options->sharedObjects && options->sharedObjects->suitable(filename))
     {
-        auto& ot = options->objectCache->getObjectTimepoint(filename, options);
+        auto loadedObject = LoadedObject::create(filename, options);
 
-        std::scoped_lock<std::mutex> guard(ot.mutex);
-        if (ot.object)
-        {
-            return ot.object;
-        }
+        options->sharedObjects->share(loadedObject, [&](auto load) {
+            load->object = read_file();
+        });
 
-        ot.object = read_file();
-        ot.unusedDurationBeforeExpiry = options->objectCache->getDefaultUnusedDuration();
-        ot.lastUsedTimepoint = vsg::clock::now();
-
-        return ot.object;
+        return loadedObject->object;
     }
     else
     {
@@ -127,7 +134,7 @@ PathObjects vsg::read(const Paths& filenames, ref_ptr<const Options> options)
         // run reads single threaded
         for (auto& filename : filenames)
         {
-            if (!filename.empty())
+            if (filename)
             {
                 entries[filename] = vsg::read(filename, options);
             }

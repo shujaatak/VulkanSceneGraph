@@ -10,6 +10,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/core/Allocator.h>
 #include <vsg/core/Data.h>
 #include <vsg/io/Input.h>
 #include <vsg/io/Options.h>
@@ -17,53 +18,104 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 using namespace vsg;
 
+int Data::Properties::compare(const Properties& rhs) const
+{
+    return compare_region(format, allocatorType, rhs.format);
+}
+
+Data::Properties& Data::Properties::operator=(const Properties& rhs)
+{
+    if (&rhs == this) return *this;
+
+    format = rhs.format;
+    if (rhs.stride != 0) stride = rhs.stride;
+    maxNumMipmaps = rhs.maxNumMipmaps;
+    blockWidth = rhs.blockWidth;
+    blockHeight = rhs.blockHeight;
+    blockDepth = rhs.blockDepth;
+    origin = rhs.origin;
+    imageViewType = rhs.imageViewType;
+    dataVariance = rhs.dataVariance;
+    allocatorType = rhs.allocatorType;
+
+    return *this;
+}
+
+void* Data::operator new(std::size_t count)
+{
+    return vsg::allocate(count, vsg::ALLOCATOR_AFFINITY_DATA);
+}
+
+void Data::operator delete(void* ptr)
+{
+    vsg::deallocate(ptr);
+}
+
+int Data::compare(const Object& rhs_object) const
+{
+    int result = Object::compare(rhs_object);
+    if (result != 0) return result;
+
+    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+
+    if ((result = properties.compare(rhs.properties))) return result;
+
+    // the shorter data is less
+    if (dataSize() < rhs.dataSize()) return -1;
+    if (dataSize() > rhs.dataSize()) return 1;
+
+    // if both empty then they must be equal
+    if (dataSize() == 0) return 0;
+
+    // use memcpy to compare the contents of the data
+    return std::memcmp(dataPointer(), rhs.dataPointer(), dataSize());
+}
+
 void Data::read(Input& input)
 {
     Object::read(input);
 
-    if (input.version_greater_equal(0, 0, 4))
+    uint32_t format = 0;
+
+    if (input.version_greater_equal(0, 6, 1))
     {
-        uint32_t format = 0;
-        input.read("Layout", format, _layout.stride, _layout.maxNumMipmaps, _layout.blockWidth, _layout.blockHeight, _layout.blockDepth, _layout.origin, _layout.imageViewType);
-        _layout.format = VkFormat(format);
+        input.read("properties", format, properties.stride, properties.maxNumMipmaps, properties.blockWidth, properties.blockHeight, properties.blockDepth, properties.origin, properties.imageViewType, properties.dataVariance);
     }
-    else if (input.version_greater_equal(0, 0, 1))
+    else if (input.version_greater_equal(0, 5, 7))
     {
-        uint32_t format = 0;
-        input.read("Layout", format, _layout.stride, _layout.maxNumMipmaps, _layout.blockWidth, _layout.blockHeight, _layout.blockDepth, _layout.origin);
-        _layout.format = VkFormat(format);
+        input.read("Layout", format, properties.stride, properties.maxNumMipmaps, properties.blockWidth, properties.blockHeight, properties.blockDepth, properties.origin, properties.imageViewType, properties.dataVariance);
     }
     else
     {
-        _layout.format = static_cast<VkFormat>(input.readValue<std::int32_t>("Format"));
-        input.read("Layout", _layout.maxNumMipmaps, _layout.blockWidth, _layout.blockHeight, _layout.blockDepth, _layout.origin);
+        input.read("Layout", format, properties.stride, properties.maxNumMipmaps, properties.blockWidth, properties.blockHeight, properties.blockDepth, properties.origin, properties.imageViewType);
+        properties.dataVariance = STATIC_DATA;
     }
+
+    properties.format = VkFormat(format);
 }
 
 void Data::write(Output& output) const
 {
     Object::write(output);
 
-    if (output.version_greater_equal(0, 0, 4))
+    uint32_t format = properties.format;
+    if (output.version_greater_equal(0, 6, 1))
     {
-        uint32_t format = _layout.format;
-        output.write("Layout", format, _layout.stride, _layout.maxNumMipmaps, _layout.blockWidth, _layout.blockHeight, _layout.blockDepth, _layout.origin, _layout.imageViewType);
+        output.write("properties", format, properties.stride, properties.maxNumMipmaps, properties.blockWidth, properties.blockHeight, properties.blockDepth, properties.origin, properties.imageViewType, properties.dataVariance);
     }
-    else if (output.version_greater_equal(0, 0, 1))
+    else if (output.version_greater_equal(0, 5, 7))
     {
-        uint32_t format = _layout.format;
-        output.write("Layout", format, _layout.stride, _layout.maxNumMipmaps, _layout.blockWidth, _layout.blockHeight, _layout.blockDepth, _layout.origin);
+        output.write("Layout", format, properties.stride, properties.maxNumMipmaps, properties.blockWidth, properties.blockHeight, properties.blockDepth, properties.origin, properties.imageViewType, properties.dataVariance);
     }
     else
     {
-        output.writeValue<std::int32_t>("Format", _layout.format);
-        output.write("Layout", _layout.maxNumMipmaps, _layout.blockWidth, _layout.blockHeight, _layout.blockDepth, _layout.origin);
+        output.write("Layout", format, properties.stride, properties.maxNumMipmaps, properties.blockWidth, properties.blockHeight, properties.blockDepth, properties.origin, properties.imageViewType);
     }
 }
 
 Data::MipmapOffsets Data::computeMipmapOffsets() const
 {
-    uint32_t numMipmaps = _layout.maxNumMipmaps;
+    uint32_t numMipmaps = properties.maxNumMipmaps;
 
     MipmapOffsets offsets;
     if (numMipmaps == 0) return offsets;

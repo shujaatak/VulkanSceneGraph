@@ -20,6 +20,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// vsg::Output subclass that implements writing objects as binary data to an output stream.
+    /// Used by VSG ReaderWriter when writing objects to native .vsgb binary files.
     class VSG_DECLSPEC BinaryOutput : public vsg::Output
     {
     public:
@@ -57,6 +59,7 @@ namespace vsg
         }
 
         void write(size_t num, const std::string* value) override;
+        void write(size_t num, const Path* value) override;
 
         /// write object
         void write(const vsg::Object* object) override;

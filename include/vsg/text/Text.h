@@ -16,10 +16,16 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/text/Font.h>
 #include <vsg/text/TextLayout.h>
 #include <vsg/text/TextTechnique.h>
+#include <vsg/utils/ShaderSet.h>
 
 namespace vsg
 {
 
+    /** Text node provides high quality text rendering using signed distance field glyph texture atlas.
+      * Text does not provide view frustum culling or level of detail, but you can add this if require
+      * it by decorating the Text with a CullNode/LOD and after TextGroup::setup() is called to initialize
+      * the rendering component you can use the TextGroup->technique->extents() value to help set the
+      * CullNode/LOD.bounds value.*/
     class VSG_DECLSPEC Text : public Inherit<Node, Text>
     {
     public:
@@ -38,16 +44,32 @@ namespace vsg
 
         /// settings
         ref_ptr<Font> font;
+        ref_ptr<ShaderSet> shaderSet;
         ref_ptr<TextTechnique> technique;
         ref_ptr<TextLayout> layout;
         ref_ptr<Data> text;
 
         /// create the rendering backend.
         /// minimumAllocation provides a hint for the minimum number of glyphs to allocate space for.
-        virtual void setup(uint32_t minimumAllocation = 0);
+        virtual void setup(uint32_t minimumAllocation = 0, ref_ptr<const Options> options = {});
 
     protected:
     };
     VSG_type_name(vsg::Text);
+
+    /// create a ShaderSet used for both CpuALayutTechnique and GpuALayutTechnique or return the Options::shaderSet["text"] entry if available.
+    extern VSG_DECLSPEC ref_ptr<ShaderSet> createTextShaderSet(ref_ptr<const Options> options = {});
+
+    /// convenience class for counting the number of text glyphs
+    struct VSG_DECLSPEC CountGlyphs : public ConstVisitor
+    {
+        size_t count = 0;
+
+        void apply(const stringValue& text) override;
+        void apply(const ubyteArray& text) override;
+        void apply(const ushortArray& text) override;
+        void apply(const uintArray& text) override;
+    };
+    VSG_type_name(vsg::CountGlyphs);
 
 } // namespace vsg

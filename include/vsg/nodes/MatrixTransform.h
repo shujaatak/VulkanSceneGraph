@@ -17,18 +17,23 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
+    /// MatrixTransform is a transform node that provides a 4x4 matrix that is used to position subgraphs.
+    /// During the RecordTraversal the matrix is multiplied by the modelview matrix and pushed to the State::modelviewMatrixStack stack.
+    /// the subgraphs is traversed the multiplied matrix is popped from the State::modelviewMatrixStack.
     class VSG_DECLSPEC MatrixTransform : public Inherit<Transform, MatrixTransform>
     {
     public:
-        explicit MatrixTransform(Allocator* allocator = nullptr);
-        explicit MatrixTransform(const dmat4& in_matrix, Allocator* allocator = nullptr);
+        MatrixTransform();
+        explicit MatrixTransform(const dmat4& in_matrix);
+
+        dmat4 matrix;
+
+        int compare(const Object& rhs) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;
 
-        dmat4 transform(const dmat4& m) const override { return m * matrix; }
-
-        dmat4 matrix;
+        dmat4 transform(const dmat4& mv) const override { return mv * matrix; }
 
     protected:
     };

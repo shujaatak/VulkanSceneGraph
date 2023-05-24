@@ -17,6 +17,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+
+    /// DescriptorBuffer is Descriptor class that encapsulates bufferInfoList used to set VkWriteDescriptorSet.pBufferInfo settings
+    /// DescriptorBuffer is means for passing uniforms to shaders.
     class VSG_DECLSPEC DescriptorBuffer : public Inherit<Descriptor, DescriptorBuffer>
     {
     public:
@@ -24,10 +27,12 @@ namespace vsg
 
         explicit DescriptorBuffer(ref_ptr<Data> data, uint32_t dstBinding = 0, uint32_t dstArrayElement = 0, VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         explicit DescriptorBuffer(const DataList& dataList, uint32_t dstBinding = 0, uint32_t dstArrayElement = 0, VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-        explicit DescriptorBuffer(const BufferInfoList& in_bufferInfoList, uint32_t dstBinding, uint32_t dstArrayElement, VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        explicit DescriptorBuffer(const BufferInfoList& in_bufferInfoList, uint32_t dstBinding = 0, uint32_t dstArrayElement = 0, VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
         /// VkWriteDescriptorSet.pBufferInfo settings
         BufferInfoList bufferInfoList;
+
+        int compare(const Object& rhs_object) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;

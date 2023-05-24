@@ -18,14 +18,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /** CullNode that enables view frustum culling on a single child node.
-     * A valid node must always be assigned to a CullNode before it's used, as, for performance reasons, there are no internal checks made when accessing the child.*/
+    /// CullNode that enables view frustum culling on a single child node.
+    /// A valid node must always be assigned to a CullNode before it's used,
+    /// for performance reasons there are no internal checks made when accessing the child.*/
     class VSG_DECLSPEC CullNode : public Inherit<Node, CullNode>
     {
     public:
-        CullNode(Allocator* allocator = nullptr);
-
-        CullNode(const dsphere& in_bound, Node* in_child, Allocator* allocator = nullptr);
+        CullNode();
+        CullNode(const dsphere& in_bound, Node* in_child);
 
         void traverse(Visitor& visitor) override { child->accept(visitor); }
         void traverse(ConstVisitor& visitor) const override { child->accept(visitor); }

@@ -16,14 +16,23 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+    // forward declare
+    class CommandBuffer;
+
+    /// CommandPool encapsulates vkCommandPool.
+    /// CommandPool are used in Vulkan as a source of Commands that are recorded to a CommandBuffer during the RecordTraversal, or dedicated command submissions.
     class VSG_DECLSPEC CommandPool : public Inherit<Object, CommandPool>
     {
     public:
         CommandPool(Device* device, uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags = 0);
 
         operator VkCommandPool() const { return _commandPool; }
+        VkCommandPool vk() const { return _commandPool; }
 
         void reset(VkCommandPoolResetFlags flags = VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT) const { vkResetCommandPool(*_device, _commandPool, flags); }
+
+        /// allocate CommandBuffer from CommandPool
+        ref_ptr<CommandBuffer> allocate(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
         Device* getDevice() { return _device; }
         const Device* getDevice() const { return _device; }
@@ -31,6 +40,12 @@ namespace vsg
     protected:
         virtual ~CommandPool();
 
+        friend CommandBuffer;
+
+        /// free CommandBuffer
+        void free(CommandBuffer* commandBuffer);
+
+        std::mutex _mutex;
         VkCommandPool _commandPool;
         ref_ptr<Device> _device;
     };

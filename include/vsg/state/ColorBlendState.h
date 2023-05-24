@@ -16,13 +16,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+
+    /// ColorBlendState encapsulates to VkPipelineColorBlendStateCreateInfo settings passed when setting up GraphicsPipeline
     class VSG_DECLSPEC ColorBlendState : public Inherit<GraphicsPipelineState, ColorBlendState>
     {
     public:
         using ColorBlendAttachments = std::vector<VkPipelineColorBlendAttachmentState>;
 
         ColorBlendState();
-        explicit ColorBlendState(const ColorBlendState& cbs);
+        ColorBlendState(const ColorBlendState& cbs);
         explicit ColorBlendState(const ColorBlendAttachments& colorBlendAttachments);
 
         /// VkPipelineColorBlendStateCreateInfo settings
@@ -31,8 +33,11 @@ namespace vsg
         ColorBlendAttachments attachments;
         float blendConstants[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
+        int compare(const Object& rhs) const override;
+
         void read(Input& input) override;
         void write(Output& output) const override;
+
         void apply(Context& context, VkGraphicsPipelineCreateInfo& pipelineInfo) const override;
 
     protected:

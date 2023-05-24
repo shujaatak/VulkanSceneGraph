@@ -12,107 +12,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <vsg/commands/CopyAndReleaseImage.h>
 #include <vsg/commands/PipelineBarrier.h>
+#include <vsg/io/Logger.h>
 #include <vsg/io/Options.h>
 #include <vsg/vk/CommandBuffer.h>
 
 using namespace vsg;
-
-struct FormatTraits
-{
-    int size = 0;
-    int numBitsPerComponent = 0;
-    int numComponents = 0;
-    bool packed = false;
-    int blockWidth = 1;
-    int blockHeight = 1;
-    int blockDepth = 1;
-    uint8_t defaultValue[32];
-
-    template<typename T>
-    void assign4(T value)
-    {
-        T* ptr = reinterpret_cast<T*>(defaultValue);
-        (*ptr++) = value;
-        (*ptr++) = value;
-        (*ptr++) = value;
-        (*ptr++) = value;
-    }
-
-    static FormatTraits get(VkFormat format, bool default_one = true);
-};
-
-FormatTraits FormatTraits::get(VkFormat format, bool default_one)
-{
-    FormatTraits traits;
-
-    if (VK_FORMAT_R8_UNORM <= format && format <= VK_FORMAT_B8G8R8A8_SRGB)
-    {
-        traits.numBitsPerComponent = 8;
-
-        if (format <= VK_FORMAT_R8_SRGB)
-            traits.numComponents = 1;
-        else if (format <= VK_FORMAT_R8G8_SRGB)
-            traits.numComponents = 2;
-        else if (format <= VK_FORMAT_B8G8R8_SRGB)
-            traits.numComponents = 3;
-        else
-            traits.numComponents = 4;
-
-        switch ((format - VK_FORMAT_R8_UNORM) % 7)
-        {
-        case 0:
-        case 2:
-        case 4:
-        case 6: traits.assign4<uint8_t>(default_one ? std::numeric_limits<uint8_t>::max() : 0); break;
-        default: traits.assign4<int8_t>(default_one ? std::numeric_limits<int8_t>::max() : 0); break;
-        }
-
-        traits.size = traits.numComponents;
-    }
-    else if (VK_FORMAT_R16_UNORM <= format && format <= VK_FORMAT_R16G16B16A16_SFLOAT)
-    {
-        traits.numBitsPerComponent = 16;
-        traits.numComponents = 1 + (format - VK_FORMAT_R16_UNORM) / 7;
-        traits.size = 2 * traits.numComponents;
-
-        switch ((format - VK_FORMAT_R16_UNORM) % 7)
-        {
-        case 0:
-        case 2:
-        case 4:
-        case 6: traits.assign4<uint16_t>(default_one ? std::numeric_limits<uint16_t>::max() : 0); break;
-        default: traits.assign4<int16_t>(default_one ? std::numeric_limits<int16_t>::max() : 0); break;
-        }
-    }
-    else if (VK_FORMAT_R32_UINT <= format && format <= VK_FORMAT_R32G32B32A32_SFLOAT)
-    {
-        traits.numBitsPerComponent = 32;
-        traits.numComponents = 1 + (format - VK_FORMAT_R32_UINT) / 3;
-        traits.size = 4 * traits.numComponents;
-
-        switch ((format - VK_FORMAT_R32_UINT) % 3)
-        {
-        case 0: traits.assign4<uint32_t>(default_one ? std::numeric_limits<uint32_t>::max() : 0); break;
-        case 1: traits.assign4<int32_t>(default_one ? std::numeric_limits<int32_t>::max() : 0); break;
-        case 2: traits.assign4<float>(default_one ? 1.0f : 0.0f); break;
-        }
-    }
-    else if (VK_FORMAT_R64_UINT <= format && format <= VK_FORMAT_R64G64B64A64_SFLOAT)
-    {
-        traits.numBitsPerComponent = 64;
-        traits.numComponents = 1 + (format - VK_FORMAT_R64_UINT) / 3;
-        traits.size = 8 * traits.numComponents;
-
-        switch ((format - VK_FORMAT_R64_UINT) % 3)
-        {
-        case 0: traits.assign4<uint64_t>(default_one ? std::numeric_limits<uint64_t>::max() : 0); break;
-        case 1: traits.assign4<int64_t>(default_one ? std::numeric_limits<int64_t>::max() : 0); break;
-        case 2: traits.assign4<double>(default_one ? 1.0 : 0.0); break;
-        }
-    }
-
-    return traits;
-}
 
 CopyAndReleaseImage::CopyAndReleaseImage(ref_ptr<MemoryBufferPools> optional_stagingMemoryBufferPools) :
     stagingMemoryBufferPools(optional_stagingMemoryBufferPools)
@@ -123,16 +27,14 @@ CopyAndReleaseImage::~CopyAndReleaseImage()
 {
 }
 
-CopyAndReleaseImage::CopyData::CopyData(ref_ptr<BufferInfo> src, ref_ptr<ImageInfo> dest, uint32_t numMipMapLevels)
+CopyAndReleaseImage::CopyData::CopyData(ref_ptr<BufferInfo> src, ref_ptr<ImageInfo> dest, uint32_t numMipMapLevels) :
+    source(src),
+    destination(dest),
+    mipLevels(numMipMapLevels)
 {
-    source = src;
-    destination = dest;
-
-    mipLevels = numMipMapLevels;
-
     if (source->data)
     {
-        layout = source->data->getLayout();
+        layout = source->data->properties;
         width = source->data->width();
         height = source->data->height();
         depth = source->data->depth();
@@ -166,7 +68,7 @@ void CopyAndReleaseImage::copy(ref_ptr<Data> data, ref_ptr<ImageInfo> dest, uint
     if (!data) return;
     if (!stagingMemoryBufferPools) return;
 
-    VkFormat sourceFormat = data->getLayout().format;
+    VkFormat sourceFormat = data->properties.format;
     VkFormat targetFormat = dest->imageView->format;
 
     if (sourceFormat == targetFormat)
@@ -175,8 +77,8 @@ void CopyAndReleaseImage::copy(ref_ptr<Data> data, ref_ptr<ImageInfo> dest, uint
         return;
     }
 
-    auto sourceTraits = FormatTraits::get(sourceFormat);
-    auto targetTraits = FormatTraits::get(targetFormat);
+    auto sourceTraits = getFormatTraits(sourceFormat);
+    auto targetTraits = getFormatTraits(targetFormat);
 
     // assume data is compatible if sizes are consistent.
     bool formatsCompatible = sourceTraits.size == targetTraits.size;
@@ -186,16 +88,12 @@ void CopyAndReleaseImage::copy(ref_ptr<Data> data, ref_ptr<ImageInfo> dest, uint
     }
     else
     {
-        //std::cout<<"Adapting"<<std::endl;
-
         VkMemoryPropertyFlags memoryPropertyFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
         VkDeviceSize imageTotalSize = targetTraits.size * data->valueCount();
         VkDeviceSize alignment = std::max(VkDeviceSize(4), VkDeviceSize(targetTraits.size));
 
         auto stagingBufferInfo = stagingMemoryBufferPools->reserveBuffer(imageTotalSize, alignment, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, memoryPropertyFlags);
-
-        // std::cout<<"stagingBufferInfo.buffer "<<stagingBufferInfo.buffer.get()<<", "<<stagingBufferInfo.offset<<", "<<stagingBufferInfo.range<<")"<<std::endl;
 
         auto deviceID = stagingMemoryBufferPools->device->deviceID;
         ref_ptr<Buffer> imageStagingBuffer(stagingBufferInfo->buffer);
@@ -247,15 +145,12 @@ void CopyAndReleaseImage::copy(ref_ptr<Data> data, ref_ptr<ImageInfo> dest, uint
 
 void CopyAndReleaseImage::_copyDirectly(ref_ptr<Data> data, ref_ptr<ImageInfo> dest, uint32_t numMipMapLevels)
 {
-    // std::cout<<"CopyAndReleaseImage::_copyDirectly()"<<std::endl;
     VkDeviceSize imageTotalSize = data->dataSize();
     VkDeviceSize alignment = std::max(VkDeviceSize(4), VkDeviceSize(data->valueSize()));
 
     VkMemoryPropertyFlags memoryPropertyFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     auto stagingBufferInfo = stagingMemoryBufferPools->reserveBuffer(imageTotalSize, alignment, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, memoryPropertyFlags);
     stagingBufferInfo->data = data;
-
-    // std::cout<<"stagingBufferInfo.buffer "<<stagingBufferInfo.buffer.get()<<", "<<stagingBufferInfo.offset<<", "<<stagingBufferInfo.range<<")"<<std::endl;
 
     auto deviceID = stagingMemoryBufferPools->device->deviceID;
     ref_ptr<Buffer> imageStagingBuffer(stagingBufferInfo->buffer);
@@ -272,8 +167,8 @@ void CopyAndReleaseImage::_copyDirectly(ref_ptr<Data> data, ref_ptr<ImageInfo> d
 void CopyAndReleaseImage::CopyData::record(CommandBuffer& commandBuffer) const
 {
     ref_ptr<Buffer> imageStagingBuffer(source->buffer);
-    ref_ptr<Data> data(source->data);
     ref_ptr<Image> textureImage(destination->imageView->image);
+    auto aspectMask = destination->imageView->subresourceRange.aspectMask;
     VkImageLayout targetImageLayout = destination->imageLayout;
 
     uint32_t faceWidth = width;
@@ -325,7 +220,6 @@ void CopyAndReleaseImage::CopyData::record(CommandBuffer& commandBuffer) const
         if (!isBlitPossible)
         {
             generatMipmaps = false;
-            //std::cerr << "Can not create mipmap chain for format: " << layout.format << std::endl;
         }
     }
 
@@ -339,7 +233,7 @@ void CopyAndReleaseImage::CopyData::record(CommandBuffer& commandBuffer) const
     preCopyBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     preCopyBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     preCopyBarrier.image = vk_textureImage;
-    preCopyBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    preCopyBarrier.subresourceRange.aspectMask = aspectMask;
     preCopyBarrier.subresourceRange.baseArrayLayer = 0;
     preCopyBarrier.subresourceRange.layerCount = arrayLayers;
     preCopyBarrier.subresourceRange.levelCount = mipLevels;
@@ -364,7 +258,6 @@ void CopyAndReleaseImage::CopyData::record(CommandBuffer& commandBuffer) const
 
         for (uint32_t mipLevel = 0; mipLevel < mipLevels; ++mipLevel)
         {
-            // std::cout<<"   level = "<<mipLevel<<", mipWidth = "<<mipWidth<<", mipHeight = "<<mipHeight<<std::endl;
             const size_t faceSize = static_cast<size_t>(faceWidth * faceHeight * faceDepth * valueSize);
 
             for (uint32_t face = 0; face < arrayLayers; ++face)
@@ -373,7 +266,7 @@ void CopyAndReleaseImage::CopyData::record(CommandBuffer& commandBuffer) const
                 region.bufferOffset = source->offset + offset;
                 region.bufferRowLength = 0;
                 region.bufferImageHeight = 0;
-                region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                region.imageSubresource.aspectMask = aspectMask;
                 region.imageSubresource.mipLevel = mipLevel;
                 region.imageSubresource.baseArrayLayer = face;
                 region.imageSubresource.layerCount = 1;
@@ -402,7 +295,7 @@ void CopyAndReleaseImage::CopyData::record(CommandBuffer& commandBuffer) const
             region.bufferOffset = source->offset + face * faceSize;
             region.bufferRowLength = 0;
             region.bufferImageHeight = 0;
-            region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            region.imageSubresource.aspectMask = aspectMask;
             region.imageSubresource.mipLevel = 0;
             region.imageSubresource.baseArrayLayer = face;
             region.imageSubresource.layerCount = 1;
@@ -421,7 +314,7 @@ void CopyAndReleaseImage::CopyData::record(CommandBuffer& commandBuffer) const
         barrier.image = vk_textureImage;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.aspectMask = aspectMask;
         barrier.subresourceRange.baseArrayLayer = 0;
         barrier.subresourceRange.layerCount = arrayLayers;
         barrier.subresourceRange.levelCount = 1;
@@ -451,13 +344,13 @@ void CopyAndReleaseImage::CopyData::record(CommandBuffer& commandBuffer) const
                 auto& blit = blits[face];
                 blit.srcOffsets[0] = {0, 0, 0};
                 blit.srcOffsets[1] = {mipWidth, mipHeight, mipDepth};
-                blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                blit.srcSubresource.aspectMask = aspectMask;
                 blit.srcSubresource.mipLevel = i - 1;
                 blit.srcSubresource.baseArrayLayer = face;
                 blit.srcSubresource.layerCount = arrayLayers;
                 blit.dstOffsets[0] = {0, 0, 0};
                 blit.dstOffsets[1] = {mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, mipDepth > 1 ? mipDepth / 2 : 1};
-                blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                blit.dstSubresource.aspectMask = aspectMask;
                 blit.dstSubresource.mipLevel = i;
                 blit.dstSubresource.baseArrayLayer = face;
                 blit.dstSubresource.layerCount = arrayLayers;
@@ -508,7 +401,7 @@ void CopyAndReleaseImage::CopyData::record(CommandBuffer& commandBuffer) const
         postCopyBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         postCopyBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         postCopyBarrier.image = vk_textureImage;
-        postCopyBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        postCopyBarrier.subresourceRange.aspectMask = aspectMask;
         postCopyBarrier.subresourceRange.baseArrayLayer = 0;
         postCopyBarrier.subresourceRange.layerCount = arrayLayers;
         postCopyBarrier.subresourceRange.levelCount = mipLevels;

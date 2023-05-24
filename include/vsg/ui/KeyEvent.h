@@ -12,13 +12,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/app/Window.h>
 #include <vsg/core/observer_ptr.h>
 #include <vsg/ui/WindowEvent.h>
-#include <vsg/viewer/Window.h>
 
 namespace vsg
 {
 
+    /// KeySymbol enum is used to provide a key symbol value that is standardized across platforms.
+    /// Naming and values used are inspired by X11 conventions.
     enum KeySymbol : uint16_t
     {
         KEY_Undefined = 0x0,
@@ -270,6 +272,7 @@ namespace vsg
 
     enum KeyModifier : uint16_t
     {
+        MODKEY_OFF = 0,
         MODKEY_Shift = 1,
         MODKEY_CapsLock = 2,
         MODKEY_Control = 4,
@@ -278,7 +281,7 @@ namespace vsg
         MODKEY_Meta = 128
     };
 
-    VSG_type_name(vsg::KeyEvent);
+    /// KeyEvent is a base class for key events
     class VSG_DECLSPEC KeyEvent : public Inherit<WindowEvent, KeyEvent>
     {
     public:
@@ -299,8 +302,9 @@ namespace vsg
         void read(Input& input) override;
         void write(Output& output) const override;
     };
+    VSG_type_name(vsg::KeyEvent);
 
-    VSG_type_name(vsg::KeyPressEvent);
+    /// KeyPressEvent represents a key press event.
     class KeyPressEvent : public Inherit<KeyEvent, KeyPressEvent>
     {
     public:
@@ -309,8 +313,9 @@ namespace vsg
         KeyPressEvent(Window* in_window, time_point in_time, KeySymbol in_keyBase, KeySymbol in_keyModified, KeyModifier in_modifier, uint32_t in_repeatCount = 0) :
             Inherit(in_window, in_time, in_keyBase, in_keyModified, in_modifier, in_repeatCount) {}
     };
+    VSG_type_name(vsg::KeyPressEvent);
 
-    VSG_type_name(vsg::KeyReleaseEvent);
+    /// KeyReleaseEvent represents a key release event.
     class KeyReleaseEvent : public Inherit<KeyEvent, KeyReleaseEvent>
     {
     public:
@@ -319,5 +324,6 @@ namespace vsg
         KeyReleaseEvent(Window* in_window, time_point in_time, KeySymbol in_keyBase, KeySymbol in_keyModified, KeyModifier in_modifier, uint32_t in_repeatCount = 0) :
             Inherit(in_window, in_time, in_keyBase, in_keyModified, in_modifier, in_repeatCount) {}
     };
+    VSG_type_name(vsg::KeyReleaseEvent);
 
 } // namespace vsg

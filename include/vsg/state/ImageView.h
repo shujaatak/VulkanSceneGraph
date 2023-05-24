@@ -20,6 +20,7 @@ namespace vsg
 
     extern VSG_DECLSPEC VkImageAspectFlags computeAspectFlagsForFormat(VkFormat format);
 
+    /// ImageView class encapsulates VkImageView and VkImageViewCreateInfo settings used to set it up.
     class VSG_DECLSPEC ImageView : public Inherit<Object, ImageView>
     {
     public:
@@ -36,6 +37,8 @@ namespace vsg
 
         /// Vulkan VkImageView handle
         VkImageView vk(uint32_t deviceID) const { return _vulkanData[deviceID].imageView; }
+
+        int compare(const Object& rhs_object) const override;
 
         virtual void compile(Device* device);
         virtual void compile(Context& context);

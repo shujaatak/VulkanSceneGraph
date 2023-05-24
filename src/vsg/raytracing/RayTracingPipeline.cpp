@@ -10,12 +10,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/raytracing/RayTracingPipeline.h>
-
 #include <vsg/core/Exception.h>
+#include <vsg/core/compare.h>
+#include <vsg/io/Logger.h>
 #include <vsg/io/Options.h>
-#include <vsg/traversals/CompileTraversal.h>
+#include <vsg/raytracing/RayTracingPipeline.h>
 #include <vsg/vk/CommandBuffer.h>
+#include <vsg/vk/Context.h>
 #include <vsg/vk/Extensions.h>
 
 using namespace vsg;
@@ -37,6 +38,19 @@ RayTracingPipeline::RayTracingPipeline(PipelineLayout* pipelineLayout, const Sha
 
 RayTracingPipeline::~RayTracingPipeline()
 {
+}
+
+int RayTracingPipeline::compare(const Object& rhs_object) const
+{
+    int result = Object::compare(rhs_object);
+    if (result != 0) return result;
+
+    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+
+    if ((result = compare_pointer_container(_shaderStages, rhs._shaderStages))) return result;
+    if ((result = compare_pointer_container(_rayTracingShaderGroups, rhs._rayTracingShaderGroups))) return result;
+    if ((result = compare_pointer(_pipelineLayout, rhs._pipelineLayout))) return result;
+    return compare_value(_maxRecursionDepth, rhs._maxRecursionDepth);
 }
 
 void RayTracingPipeline::read(Input& input)
@@ -89,6 +103,10 @@ void RayTracingPipeline::compile(Context& context)
             {
                 shaderCompiler->compile(_shaderStages); // may need to map defines and paths in some fashion
             }
+            else
+            {
+                fatal("VulkanSceneGraph not compiled with GLSLang, unable to compile shaders.");
+            }
         }
 
         _pipelineLayout->compile(context);
@@ -115,7 +133,7 @@ RayTracingPipeline::Implementation::Implementation(Context& context, RayTracingP
 
     auto pipelineLayout = rayTracingPipeline->getPipelineLayout();
 
-    Extensions* extensions = Extensions::Get(_device, true);
+    auto extensions = _device->getExtensions();
 
     VkRayTracingPipelineCreateInfoKHR pipelineInfo = {};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
@@ -207,6 +225,15 @@ BindRayTracingPipeline::BindRayTracingPipeline(RayTracingPipeline* pipeline) :
 
 BindRayTracingPipeline::~BindRayTracingPipeline()
 {
+}
+
+int BindRayTracingPipeline::compare(const Object& rhs_object) const
+{
+    int result = StateCommand::compare(rhs_object);
+    if (result != 0) return result;
+
+    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+    return compare_pointer(_pipeline, rhs._pipeline);
 }
 
 void BindRayTracingPipeline::read(Input& input)

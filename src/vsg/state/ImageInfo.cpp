@@ -10,12 +10,86 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/core/compare.h>
 #include <vsg/io/Options.h>
 #include <vsg/state/ImageInfo.h>
 
 #include <algorithm>
 
 using namespace vsg;
+
+FormatTraits vsg::getFormatTraits(VkFormat format, bool default_one)
+{
+    FormatTraits traits;
+
+    if (VK_FORMAT_R8_UNORM <= format && format <= VK_FORMAT_B8G8R8A8_SRGB)
+    {
+        traits.numBitsPerComponent = 8;
+
+        if (format <= VK_FORMAT_R8_SRGB)
+            traits.numComponents = 1;
+        else if (format <= VK_FORMAT_R8G8_SRGB)
+            traits.numComponents = 2;
+        else if (format <= VK_FORMAT_B8G8R8_SRGB)
+            traits.numComponents = 3;
+        else
+            traits.numComponents = 4;
+
+        switch ((format - VK_FORMAT_R8_UNORM) % 7)
+        {
+        case 0:
+        case 2:
+        case 4:
+        case 6: traits.assign4<uint8_t>(default_one ? std::numeric_limits<uint8_t>::max() : 0); break;
+        default: traits.assign4<int8_t>(default_one ? std::numeric_limits<int8_t>::max() : 0); break;
+        }
+
+        traits.size = traits.numComponents;
+    }
+    else if (VK_FORMAT_R16_UNORM <= format && format <= VK_FORMAT_R16G16B16A16_SFLOAT)
+    {
+        traits.numBitsPerComponent = 16;
+        traits.numComponents = 1 + (format - VK_FORMAT_R16_UNORM) / 7;
+        traits.size = 2 * traits.numComponents;
+
+        switch ((format - VK_FORMAT_R16_UNORM) % 7)
+        {
+        case 0:
+        case 2:
+        case 4:
+        case 6: traits.assign4<uint16_t>(default_one ? std::numeric_limits<uint16_t>::max() : 0); break;
+        default: traits.assign4<int16_t>(default_one ? std::numeric_limits<int16_t>::max() : 0); break;
+        }
+    }
+    else if (VK_FORMAT_R32_UINT <= format && format <= VK_FORMAT_R32G32B32A32_SFLOAT)
+    {
+        traits.numBitsPerComponent = 32;
+        traits.numComponents = 1 + (format - VK_FORMAT_R32_UINT) / 3;
+        traits.size = 4 * traits.numComponents;
+
+        switch ((format - VK_FORMAT_R32_UINT) % 3)
+        {
+        case 0: traits.assign4<uint32_t>(default_one ? std::numeric_limits<uint32_t>::max() : 0); break;
+        case 1: traits.assign4<int32_t>(default_one ? std::numeric_limits<int32_t>::max() : 0); break;
+        case 2: traits.assign4<float>(default_one ? 1.0f : 0.0f); break;
+        }
+    }
+    else if (VK_FORMAT_R64_UINT <= format && format <= VK_FORMAT_R64G64B64A64_SFLOAT)
+    {
+        traits.numBitsPerComponent = 64;
+        traits.numComponents = 1 + (format - VK_FORMAT_R64_UINT) / 3;
+        traits.size = 8 * traits.numComponents;
+
+        switch ((format - VK_FORMAT_R64_UINT) % 3)
+        {
+        case 0: traits.assign4<uint64_t>(default_one ? std::numeric_limits<uint64_t>::max() : 0); break;
+        case 1: traits.assign4<int64_t>(default_one ? std::numeric_limits<int64_t>::max() : 0); break;
+        case 2: traits.assign4<double>(default_one ? 1.0 : 0.0); break;
+        }
+    }
+
+    return traits;
+}
 
 uint32_t vsg::computeNumMipMapLevels(const Data* data, const Sampler* sampler)
 {
@@ -41,6 +115,18 @@ ImageInfo::~ImageInfo()
 {
 }
 
+int ImageInfo::compare(const Object& rhs_object) const
+{
+    int result = Object::compare(rhs_object);
+    if (result != 0) return result;
+
+    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+
+    if ((result = compare_pointer(sampler, rhs.sampler))) return result;
+    if ((result = compare_pointer(imageView, rhs.imageView))) return result;
+    return compare_value(imageLayout, rhs.imageLayout);
+}
+
 void ImageInfo::computeNumMipMapLevels()
 {
     if (imageView && imageView->image && imageView->image->data)
@@ -55,8 +141,8 @@ void ImageInfo::computeNumMipMapLevels()
         if (generatMipmaps)
         {
             // check that the data isn't compressed.
-            auto layout = data->getLayout();
-            if (layout.blockWidth > 1 || layout.blockHeight > 1 || layout.blockDepth > 1)
+            const auto& properties = data->properties;
+            if (properties.blockWidth > 1 || properties.blockHeight > 1 || properties.blockDepth > 1)
             {
                 sampler->maxLod = 0.0f;
                 mipLevels = 1;

@@ -15,15 +15,16 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/commands/Command.h>
 #include <vsg/nodes/Node.h>
 #include <vsg/state/BufferInfo.h>
-#include <vsg/traversals/CompileTraversal.h>
 
 namespace vsg
 {
 
+    /** VertexIndexDraw provides a lightweight way of binding vertex arrays, indices and then issuing a vkCmdDrawIndexed command.
+      * Higher performance equivalent to use of individual vsg::BindVertexBuffers, vsg::BVindIndexBuffer and vsg::DrawIndex commands.*/
     class VSG_DECLSPEC VertexIndexDraw : public Inherit<Command, VertexIndexDraw>
     {
     public:
-        VertexIndexDraw(Allocator* allocator = nullptr);
+        VertexIndexDraw();
 
         void read(Input& input) override;
         void write(Output& output) const override;
@@ -49,13 +50,7 @@ namespace vsg
     protected:
         virtual ~VertexIndexDraw();
 
-        struct VulkanData
-        {
-            std::vector<VkBuffer> vkBuffers;
-            std::vector<VkDeviceSize> offsets;
-        };
-
-        vk_buffer<VulkanData> _vulkanData;
+        vk_buffer<VulkanArrayData> _vulkanData;
         VkIndexType indexType = VK_INDEX_TYPE_UINT16;
     };
     VSG_type_name(vsg::VertexIndexDraw)

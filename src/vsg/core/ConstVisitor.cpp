@@ -65,6 +65,102 @@ void ConstVisitor::apply(const doubleValue& value)
 {
     apply(static_cast<const Data&>(value));
 }
+void ConstVisitor::apply(const vec2Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const vec3Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const vec4Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const dvec2Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const dvec3Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const dvec4Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const bvec2Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const bvec3Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const bvec4Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const ubvec2Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const ubvec3Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const ubvec4Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const svec2Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const svec3Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const svec4Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const usvec2Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const usvec3Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const usvec4Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const ivec2Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const ivec3Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const ivec4Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const uivec2Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const uivec3Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
+void ConstVisitor::apply(const uivec4Value& value)
+{
+    apply(static_cast<const Data&>(value));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -421,6 +517,10 @@ void ConstVisitor::apply(const Node& value)
 {
     apply(static_cast<const Object&>(value));
 }
+void ConstVisitor::apply(const Compilable& value)
+{
+    apply(static_cast<const Node&>(value));
+}
 void ConstVisitor::apply(const Commands& value)
 {
     apply(static_cast<const Node&>(value));
@@ -465,6 +565,10 @@ void ConstVisitor::apply(const Geometry& value)
 {
     apply(static_cast<const Command&>(value));
 }
+void ConstVisitor::apply(const VertexDraw& value)
+{
+    apply(static_cast<const Command&>(value));
+}
 void ConstVisitor::apply(const VertexIndexDraw& value)
 {
     apply(static_cast<const Command&>(value));
@@ -481,6 +585,47 @@ void ConstVisitor::apply(const Switch& value)
 {
     apply(static_cast<const Node&>(value));
 }
+void ConstVisitor::apply(const Light& value)
+{
+    apply(static_cast<const Node&>(value));
+}
+void ConstVisitor::apply(const AmbientLight& value)
+{
+    apply(static_cast<const Light&>(value));
+}
+void ConstVisitor::apply(const DirectionalLight& value)
+{
+    apply(static_cast<const Light&>(value));
+}
+void ConstVisitor::apply(const PointLight& value)
+{
+    apply(static_cast<const Light&>(value));
+}
+void ConstVisitor::apply(const SpotLight& value)
+{
+    apply(static_cast<const Light&>(value));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Text Objects
+//
+void ConstVisitor::apply(const Text& value)
+{
+    apply(static_cast<const Node&>(value));
+}
+void ConstVisitor::apply(const TextGroup& value)
+{
+    apply(static_cast<const Node&>(value));
+}
+void ConstVisitor::apply(const TextTechnique& value)
+{
+    apply(static_cast<const Object&>(value));
+}
+void ConstVisitor::apply(const TextLayout& value)
+{
+    apply(static_cast<const Object&>(value));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -492,7 +637,7 @@ void ConstVisitor::apply(const BufferInfo& value)
 }
 void ConstVisitor::apply(const Command& value)
 {
-    apply(static_cast<const Node&>(value));
+    apply(static_cast<const Compilable&>(value));
 }
 void ConstVisitor::apply(const StateCommand& value)
 {
@@ -626,10 +771,34 @@ void ConstVisitor::apply(const ClearAttachments& value)
 {
     apply(static_cast<const Command&>(value));
 }
+void ConstVisitor::apply(const QueryPool& value)
+{
+    apply(static_cast<const Object&>(value));
+}
+void ConstVisitor::apply(const ResetQueryPool& value)
+{
+    apply(static_cast<const Command&>(value));
+}
+void ConstVisitor::apply(const BeginQuery& value)
+{
+    apply(static_cast<const Command&>(value));
+}
+void ConstVisitor::apply(const EndQuery& value)
+{
+    apply(static_cast<const Command&>(value));
+}
+void ConstVisitor::apply(const WriteTimestamp& value)
+{
+    apply(static_cast<const Command&>(value));
+}
+void ConstVisitor::apply(const CopyQueryPoolResults& value)
+{
+    apply(static_cast<const Command&>(value));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-// RTX
+// Mesh shading
 //
 void ConstVisitor::apply(const DrawMeshTasks& dmt)
 {
@@ -665,6 +834,14 @@ void ConstVisitor::apply(const ConfigureWindowEvent& event)
     apply(static_cast<const WindowEvent&>(event));
 }
 void ConstVisitor::apply(const CloseWindowEvent& event)
+{
+    apply(static_cast<const WindowEvent&>(event));
+}
+void ConstVisitor::apply(const FocusInEvent& event)
+{
+    apply(static_cast<const WindowEvent&>(event));
+}
+void ConstVisitor::apply(const FocusOutEvent& event)
 {
     apply(static_cast<const WindowEvent&>(event));
 }

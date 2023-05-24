@@ -11,9 +11,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/core/Exception.h>
+#include <vsg/core/compare.h>
 #include <vsg/io/Options.h>
 #include <vsg/state/Sampler.h>
-#include <vsg/traversals/CompileTraversal.h>
+#include <vsg/vk/Context.h>
 
 using namespace vsg;
 
@@ -23,6 +24,15 @@ Sampler::Sampler()
 
 Sampler::~Sampler()
 {
+}
+
+int Sampler::compare(const Object& rhs_object) const
+{
+    int result = Object::compare(rhs_object);
+    if (result != 0) return result;
+
+    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+    return compare_region(flags, unnormalizedCoordinates, rhs.flags);
 }
 
 void Sampler::read(Input& input)
