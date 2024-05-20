@@ -27,10 +27,10 @@ namespace vsg
     public:
         explicit BinaryOutput(std::ostream& output, ref_ptr<const Options> in_options = {});
 
-        /// write property name an non op for binary
+        /// write property name is a non op for binary
         void writePropertyName(const char*) override {}
 
-        /// write end of line a non op for binary
+        /// write end of line is a non op for binary
         void writeEndOfLine() override {}
 
         template<typename T>
@@ -51,14 +51,11 @@ namespace vsg
         void write(size_t num, const float* value) override { _write(num, value); }
         void write(size_t num, const double* value) override { _write(num, value); }
 
-        void _write(const std::string& str)
-        {
-            uint32_t size = static_cast<uint32_t>(str.size());
-            _output.write(reinterpret_cast<const char*>(&size), sizeof(uint32_t));
-            _output.write(str.c_str(), size);
-        }
+        void _write(const std::string& str);
+        void _write(const std::wstring& str);
 
         void write(size_t num, const std::string* value) override;
+        void write(size_t num, const std::wstring* value) override;
         void write(size_t num, const Path* value) override;
 
         /// write object

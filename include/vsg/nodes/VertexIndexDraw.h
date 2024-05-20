@@ -20,17 +20,12 @@ namespace vsg
 {
 
     /** VertexIndexDraw provides a lightweight way of binding vertex arrays, indices and then issuing a vkCmdDrawIndexed command.
-      * Higher performance equivalent to use of individual vsg::BindVertexBuffers, vsg::BVindIndexBuffer and vsg::DrawIndex commands.*/
+      * Higher performance equivalent to use of individual vsg::BindVertexBuffers, vsg::BindIndexBuffer and vsg::DrawIndexed commands.*/
     class VSG_DECLSPEC VertexIndexDraw : public Inherit<Command, VertexIndexDraw>
     {
     public:
         VertexIndexDraw();
-
-        void read(Input& input) override;
-        void write(Output& output) const override;
-
-        void compile(Context& context) override;
-        void record(CommandBuffer& commandBuffer) const override;
+        VertexIndexDraw(const VertexIndexDraw& rhs, const CopyOp& copyop = {});
 
         // vkCmdDrawIndexed settings
         // vkCmdDrawIndexed(commandBuffer, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
@@ -46,6 +41,16 @@ namespace vsg
 
         void assignArrays(const DataList& in_arrays);
         void assignIndices(ref_ptr<Data> in_indices);
+
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return VertexIndexDraw::create(*this, copyop); }
+        int compare(const Object& rhs) const override;
+
+        void read(Input& input) override;
+        void write(Output& output) const override;
+
+        void compile(Context& context) override;
+        void record(CommandBuffer& commandBuffer) const override;
 
     protected:
         virtual ~VertexIndexDraw();

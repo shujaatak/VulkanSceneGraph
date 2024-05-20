@@ -18,7 +18,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// Bin node is used internally by RecoredTraversal/View to collect and then sort command nodes assigned the bin,
+    /// Bin node is used internally by RecordTraversal/View to collect and then sort command nodes assigned to the bin,
     /// then recorded to the command buffer in the sorted order.
     class VSG_DECLSPEC Bin : public Inherit<Node, Bin>
     {
@@ -31,19 +31,24 @@ namespace vsg
         };
 
         Bin();
+        Bin(const Bin& rhs, const CopyOp& copyop = {});
         Bin(int32_t in_binNumber, SortOrder in_sortOrder);
 
-        void traverse(RecordTraversal& visitor) const override;
-
-        void read(Input& input) override;
-        void write(Output& output) const override;
+        int32_t binNumber = 0;
+        SortOrder sortOrder = NO_SORT;
 
         void clear();
 
         void add(State* state, double value, const Node* node);
 
-        int32_t binNumber = 0;
-        SortOrder sortOrder = NO_SORT;
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return Bin::create(*this, copyop); }
+        int compare(const Object& rhs) const override;
+
+        void traverse(RecordTraversal& visitor) const override;
+
+        void read(Input& input) override;
+        void write(Output& output) const override;
 
     protected:
         virtual ~Bin();

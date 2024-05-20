@@ -46,6 +46,9 @@ namespace vsg
         /// Logger singleton, defaults to using vsg::StdLogger
         static ref_ptr<Logger>& instance();
 
+        /// redirect std::cout and std::cerr output to vsg::Logger at level LOGGER_INFO and LOGGER_ERROR respectively.
+        virtual void redirect_std();
+
         virtual void flush() {}
 
         inline void debug(char* message) { debug(std::string_view(message)); }
@@ -234,6 +237,11 @@ namespace vsg
         std::mutex _mutex;
         std::ostringstream _stream;
 
+        std::unique_ptr<std::streambuf> _override_cout;
+        std::unique_ptr<std::streambuf> _override_cerr;
+        std::streambuf* _original_cout = nullptr;
+        std::streambuf* _original_cerr = nullptr;
+
         virtual void debug_implementation(const std::string_view& message) = 0;
         virtual void info_implementation(const std::string_view& message) = 0;
         virtual void warn_implementation(const std::string_view& message) = 0;
@@ -247,7 +255,7 @@ namespace vsg
     template<typename... Args>
     void debug(Args&&... args)
     {
-        Logger::instance()->debug(args...);
+        Logger::instance()->debug(std::forward<Args>(args)...);
     }
 
     /// thread safe access to stream for writing debug output.
@@ -259,9 +267,9 @@ namespace vsg
     /// write info message to the current vsg::Logger::instance().
     /// i.e. info("vertex = ", vsg::vec3(x,y,z));
     template<typename... Args>
-    void info(Args... args)
+    void info(Args&&... args)
     {
-        Logger::instance()->info(args...);
+        Logger::instance()->info(std::forward<Args>(args)...);
     }
 
     /// thread safe access to stream for writing info output.
@@ -274,7 +282,7 @@ namespace vsg
     template<typename... Args>
     void warn(Args&&... args)
     {
-        Logger::instance()->warn(args...);
+        Logger::instance()->warn(std::forward<Args>(args)...);
     }
 
     /// thread safe access to stream for writing warn output.
@@ -283,27 +291,27 @@ namespace vsg
         Logger::instance()->warn_stream(print);
     }
 
-    /// write warn message to the current vsg::Logger::instance().
+    /// write error message to the current vsg::Logger::instance().
     template<typename... Args>
     void error(Args&&... args)
     {
-        Logger::instance()->error(args...);
+        Logger::instance()->error(std::forward<Args>(args)...);
     }
 
-    /// thread safe access to stream for writing warn output.
+    /// thread safe access to stream for writing error output.
     inline void error_stream(Logger::PrintToStreamFunction print)
     {
         Logger::instance()->error_stream(print);
     }
 
-    /// write warn message to the current vsg::Logger::instance().
+    /// write fatal message to the current vsg::Logger::instance().
     template<typename... Args>
     void fatal(Args&&... args)
     {
-        Logger::instance()->fatal(args...);
+        Logger::instance()->fatal(std::forward<Args>(args)...);
     }
 
-    /// thread safe access to stream for writing warn output.
+    /// thread safe access to stream for writing fatal output.
     inline void fatal_stream(Logger::PrintToStreamFunction print)
     {
         Logger::instance()->fatal_stream(print);
@@ -313,16 +321,16 @@ namespace vsg
     template<typename... Args>
     void log(Logger::Level msg_level, Args&&... args)
     {
-        Logger::instance()->log(msg_level, args...);
+        Logger::instance()->log(msg_level, std::forward<Args>(args)...);
     }
 
-    /// thread safe access to stream for writing warn output for specified Logger level.
+    /// thread safe access to stream for writing output for specified Logger level.
     inline void log_stream(Logger::Level msg_level, Logger::PrintToStreamFunction print)
     {
         Logger::instance()->log_stream(msg_level, print);
     }
 
-    /// default Logger that sends debug and info messages to std:cout, and warn and error messages to std::cert
+    /// default Logger that sends debug and info messages to std:cout, and warn and error messages to std::cerr
     class VSG_DECLSPEC StdLogger : public Inherit<Logger, StdLogger>
     {
     public:
@@ -365,7 +373,7 @@ namespace vsg
         void flush() override;
 
     protected:
-        void print_id(std::ostream& out, std::thread::id id);
+        void print_id(FILE* out, std::thread::id id);
 
         void debug_implementation(const std::string_view& message) override;
         void info_implementation(const std::string_view& message) override;

@@ -25,26 +25,13 @@ namespace vsg
         ImageInfo() :
             imageLayout(VK_IMAGE_LAYOUT_UNDEFINED) {}
 
-        ImageInfo(ref_ptr<Sampler> in_sampler, ref_ptr<ImageView> in_imageView, VkImageLayout in_imageLayout = VK_IMAGE_LAYOUT_UNDEFINED) :
-            sampler(in_sampler),
-            imageView(in_imageView),
-            imageLayout(in_imageLayout)
-        {
-            computeNumMipMapLevels();
-        }
+        ImageInfo(ref_ptr<Sampler> in_sampler, ref_ptr<ImageView> in_imageView, VkImageLayout in_imageLayout = VK_IMAGE_LAYOUT_UNDEFINED);
 
         // Convenience constructor that creates a vsg::ImageView and vsg::Image to represent the data on the GPU.
         template<typename T>
         ImageInfo(ref_ptr<Sampler> in_sampler, ref_ptr<T> in_data, VkImageLayout in_imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) :
-            sampler(in_sampler),
-            imageLayout(in_imageLayout)
+            ImageInfo(in_sampler, ImageView::create(Image::create(in_data)), in_imageLayout)
         {
-            auto image = Image::create(in_data);
-            image->usage |= (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-
-            imageView = ImageView::create(image);
-
-            computeNumMipMapLevels();
         }
 
         ImageInfo(const ImageInfo&) = delete;
@@ -68,7 +55,7 @@ namespace vsg
             return data && data->differentModifiedCount(copiedModifiedCounts[deviceID]);
         }
 
-        /// return true if the ImageInfo's data has been modified and should be copied to the buffer, and sync the moificationCounts
+        /// return true if the ImageInfo's data has been modified and should be copied to the buffer, and sync the modification counts
         bool syncModifiedCounts(uint32_t deviceID)
         {
             if (!imageView || !imageView->image) return false;
@@ -85,7 +72,7 @@ namespace vsg
 
     using ImageInfoList = std::vector<ref_ptr<ImageInfo>>;
 
-    /// format traits hints that can be used when initialize image data
+    /// format traits hints that can be used when initializing image data
     struct FormatTraits
     {
         int size = 0;
@@ -108,7 +95,7 @@ namespace vsg
         }
     };
 
-    /// return the traits suitable for specified VkFDormat.
+    /// return the traits suitable for specified VkFormat.
     extern VSG_DECLSPEC FormatTraits getFormatTraits(VkFormat format, bool default_one = true);
 
     /// return the number of mip map levels specified by Data/Sampler.

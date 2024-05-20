@@ -22,13 +22,21 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// QuadGroup is a specialist group node that manages a 4 children, designed to keep minimize the CPU overhead of traversing quad trees.
-    /// The number of children is fixed and all children are assumed to set before traversal of the scene graph, failure to set up correctly
-    /// will lead to memory faults, this is deliberate choice as any checks for pointer validity will incur CPU overhead.
+    /// QuadGroup is a specialized group node that manages 4 children, designed to minimize the CPU overhead of traversing quad trees.
+    /// The number of children is fixed and all children are assumed to be set before traversal of the scene graph, failure to set up correctly
+    /// will lead to memory faults, this is a deliberate choice as any checks for pointer validity will incur CPU overhead.
     class VSG_DECLSPEC QuadGroup : public Inherit<Node, QuadGroup>
     {
     public:
         QuadGroup();
+        QuadGroup(const QuadGroup& rhs, const CopyOp& copyop = {});
+
+        using Children = std::array<ref_ptr<vsg::Node>, 4>;
+        Children children;
+
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return QuadGroup::create(*this, copyop); }
+        int compare(const Object& rhs) const override;
 
         template<class N, class V>
         static void t_traverse(N& node, V& visitor)
@@ -42,9 +50,6 @@ namespace vsg
 
         void read(Input& input) override;
         void write(Output& output) const override;
-
-        using Children = std::array<ref_ptr<vsg::Node>, 4>;
-        Children children;
 
     protected:
         virtual ~QuadGroup();

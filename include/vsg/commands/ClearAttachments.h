@@ -17,7 +17,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// ClearAttachments command encapsulates vkCmdCopyAttachments functionality and associated settings.
+    /// ClearAttachments command encapsulates vkCmdClearAttachments functionality and associated settings.
     class VSG_DECLSPEC ClearAttachments : public Inherit<Command, ClearAttachments>
     {
     public:
@@ -29,6 +29,10 @@ namespace vsg
 
         Attachments attachments;
         Rects rects;
+
+    public:
+        void read(Input& input) override;
+        void write(Output& output) const override;
 
         void record(CommandBuffer& commandBuffer) const override;
     };

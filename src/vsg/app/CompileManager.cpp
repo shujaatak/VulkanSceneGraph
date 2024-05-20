@@ -16,6 +16,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/Exception.h>
 #include <vsg/io/Logger.h>
 #include <vsg/io/Options.h>
+#include <vsg/state/ViewDependentState.h>
+#include <vsg/utils/ShaderSet.h>
 
 using namespace vsg;
 
@@ -31,7 +33,11 @@ void CompileResult::reset()
 
 void CompileResult::add(const CompileResult& cr)
 {
-    if (result == VK_INCOMPLETE) result = cr.result;
+    if (result == VK_INCOMPLETE || result == VK_SUCCESS)
+    {
+        result = cr.result;
+    }
+
     if (cr.maxSlot > maxSlot) maxSlot = cr.maxSlot;
     if (!containsPagedLOD) containsPagedLOD = cr.containsPagedLOD;
 
@@ -149,13 +155,24 @@ void CompileManager::add(const Viewer& viewer, const ResourceRequirements& resou
     }
 }
 
+void CompileManager::assignInstrumentation(ref_ptr<Instrumentation> in_instrumentation)
+{
+    auto cts = takeCompileTraversals(numCompileTraversals);
+    for (auto& ct : cts)
+    {
+        ct->assignInstrumentation(in_instrumentation);
+
+        compileTraversals->add(ct);
+    }
+}
+
 CompileResult CompileManager::compile(ref_ptr<Object> object, ContextSelectionFunction contextSelection)
 {
     CollectResourceRequirements collectRequirements;
     object->accept(collectRequirements);
 
     auto& requirements = collectRequirements.requirements;
-    auto& binStack = requirements.binStack;
+    auto& viewDetailsStack = requirements.viewDetailsStack;
 
     CompileResult result;
     result.maxSlot = requirements.maxSlot;
@@ -175,14 +192,21 @@ CompileResult CompileManager::compile(ref_ptr<Object> object, ContextSelectionFu
             for (auto& context : compileTraversal->contexts)
             {
                 ref_ptr<View> view = context->view;
-                if (view && !binStack.empty())
+
+                if (view)
                 {
-                    if (auto itr = result.views.find(view.get()); itr == result.views.end())
+                    result.views[view].add(viewDetailsStack.top());
+                    if (view->viewDependentState)
                     {
-                        result.views[view] = binStack.top();
+                        for (auto& sm : view->viewDependentState->shadowMaps)
+                        {
+                            if (sm.view)
+                            {
+                                result.views[sm.view].add(requirements.viewDetailsStack.top());
+                            }
+                        }
                     }
                 }
-
                 context->reserve(requirements);
             }
 

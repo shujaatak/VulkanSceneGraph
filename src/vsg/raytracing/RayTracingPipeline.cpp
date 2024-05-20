@@ -17,7 +17,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/raytracing/RayTracingPipeline.h>
 #include <vsg/vk/CommandBuffer.h>
 #include <vsg/vk/Context.h>
-#include <vsg/vk/Extensions.h>
 
 using namespace vsg;
 
@@ -204,7 +203,7 @@ RayTracingPipeline::Implementation::Implementation(Context& context, RayTracingP
     }
     else
     {
-        throw Exception{"Error: vsg::Pipeline::createGraphics(...) failed to create VkPipeline.", result};
+        throw Exception{"Error: vsg::RayTracingPipeline failed to create VkPipeline.", result};
     }
 }
 

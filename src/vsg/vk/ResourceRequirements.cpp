@@ -17,12 +17,16 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/nodes/DepthSorted.h>
 #include <vsg/nodes/Geometry.h>
 #include <vsg/nodes/Group.h>
+#include <vsg/nodes/Layer.h>
 #include <vsg/nodes/PagedLOD.h>
 #include <vsg/nodes/StateGroup.h>
 #include <vsg/nodes/VertexDraw.h>
 #include <vsg/nodes/VertexIndexDraw.h>
 #include <vsg/state/DescriptorImage.h>
 #include <vsg/state/MultisampleState.h>
+#include <vsg/state/ViewDependentState.h>
+#include <vsg/utils/ShaderSet.h>
+#include <vsg/vk/Context.h>
 #include <vsg/vk/RenderPass.h>
 #include <vsg/vk/ResourceRequirements.h>
 
@@ -34,7 +38,7 @@ using namespace vsg;
 //
 ResourceRequirements::ResourceRequirements(ref_ptr<ResourceHints> hints)
 {
-    binStack.push(ResourceRequirements::BinDetails{});
+    viewDetailsStack.push(ResourceRequirements::ViewDetails{});
     if (hints) apply(*hints);
 }
 
@@ -66,6 +70,10 @@ void ResourceRequirements::apply(const ResourceHints& resourceHints)
             descriptorTypeMap[type] += count;
         }
     }
+
+    numLightsRange = resourceHints.numLightsRange;
+    numShadowMapsRange = resourceHints.numShadowMapsRange;
+    shadowMapSize = resourceHints.shadowMapSize;
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -118,24 +126,6 @@ void CollectResourceRequirements::apply(const Node& node)
     if (hasResourceHints) ++_numResourceHintsAbove;
 
     node.traverse(*this);
-
-    if (hasResourceHints) --_numResourceHintsAbove;
-}
-
-void CollectResourceRequirements::apply(const StateGroup& stategroup)
-{
-    bool hasResourceHints = checkForResourceHints(stategroup);
-    if (hasResourceHints) ++_numResourceHintsAbove;
-
-    if (_numResourceHintsAbove == 0)
-    {
-        for (auto& command : stategroup.stateCommands)
-        {
-            command->accept(*this);
-        }
-    }
-
-    stategroup.traverse(*this);
 
     if (hasResourceHints) --_numResourceHintsAbove;
 }
@@ -206,46 +196,63 @@ void CollectResourceRequirements::apply(const DescriptorImage& descriptorImage)
     }
 }
 
+void CollectResourceRequirements::apply(const Light& light)
+{
+    requirements.viewDetailsStack.top().lights.insert(&light);
+}
+
 void CollectResourceRequirements::apply(const View& view)
 {
+
     if (auto itr = requirements.views.find(&view); itr != requirements.views.end())
     {
-        requirements.binStack.push(itr->second);
+        requirements.viewDetailsStack.push(itr->second);
     }
     else
     {
-        requirements.binStack.push(ResourceRequirements::BinDetails{});
+        requirements.viewDetailsStack.push(ResourceRequirements::ViewDetails{});
     }
 
     view.traverse(*this);
 
+    auto& viewDetails = requirements.viewDetailsStack.top();
+
     for (auto& bin : view.bins)
     {
-        requirements.binStack.top().bins.insert(bin);
+        viewDetails.bins.insert(bin);
     }
+
+    requirements.views[&view] = viewDetails;
 
     if (view.viewDependentState)
     {
         if (requirements.maxSlot < 2) requirements.maxSlot = 2;
 
+        view.viewDependentState->init(requirements);
+
         view.viewDependentState->accept(*this);
     }
 
-    requirements.views[&view] = requirements.binStack.top();
-
-    requirements.binStack.pop();
+    requirements.viewDetailsStack.pop();
 }
 
 void CollectResourceRequirements::apply(const DepthSorted& depthSorted)
 {
-    requirements.binStack.top().indices.insert(depthSorted.binNumber);
+    requirements.viewDetailsStack.top().indices.insert(depthSorted.binNumber);
 
     depthSorted.traverse(*this);
 }
 
+void CollectResourceRequirements::apply(const Layer& layer)
+{
+    requirements.viewDetailsStack.top().indices.insert(layer.binNumber);
+
+    layer.traverse(*this);
+}
+
 void CollectResourceRequirements::apply(const Bin& bin)
 {
-    requirements.binStack.top().bins.insert(&bin);
+    requirements.viewDetailsStack.top().bins.insert(&bin);
 }
 
 void CollectResourceRequirements::apply(const Geometry& geometry)
@@ -273,4 +280,39 @@ void CollectResourceRequirements::apply(const BindVertexBuffers& bvb)
 void CollectResourceRequirements::apply(const BindIndexBuffer& bib)
 {
     apply(bib.indices);
+}
+
+void CollectResourceRequirements::apply(ref_ptr<BufferInfo> bufferInfo)
+{
+    if (bufferInfo && bufferInfo->data && bufferInfo->data->dynamic())
+    {
+        if (bufferInfo->data->properties.dataVariance == DYNAMIC_DATA)
+        {
+            requirements.earlyDynamicData.bufferInfos.push_back(bufferInfo);
+        }
+        else // DYNAMIC_DATA_TRANSFER_AFTER_RECORD)
+        {
+            requirements.lateDynamicData.bufferInfos.push_back(bufferInfo);
+        }
+    }
+}
+
+void CollectResourceRequirements::apply(ref_ptr<ImageInfo> imageInfo)
+{
+    if (imageInfo && imageInfo->imageView && imageInfo->imageView->image)
+    {
+        // check for dynamic data
+        auto& data = imageInfo->imageView->image->data;
+        if (data && data->dynamic())
+        {
+            if (data->properties.dataVariance == DYNAMIC_DATA)
+            {
+                requirements.earlyDynamicData.imageInfos.push_back(imageInfo);
+            }
+            else // DYNAMIC_DATA_TRANSFER_AFTER_RECORD)
+            {
+                requirements.lateDynamicData.imageInfos.push_back(imageInfo);
+            }
+        }
+    }
 }

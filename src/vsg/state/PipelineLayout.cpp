@@ -27,6 +27,14 @@ PipelineLayout::PipelineLayout() :
 {
 }
 
+PipelineLayout::PipelineLayout(const PipelineLayout& rhs, const CopyOp& copyop) :
+    Inherit(rhs, copyop),
+    flags(rhs.flags),
+    setLayouts(rhs.setLayouts),
+    pushConstantRanges(rhs.pushConstantRanges)
+{
+}
+
 PipelineLayout::PipelineLayout(const DescriptorSetLayouts& in_setLayouts, const PushConstantRanges& in_pushConstantRanges, VkPipelineLayoutCreateFlags in_flags) :
     flags(in_flags),
     setLayouts(in_setLayouts),
@@ -98,7 +106,7 @@ void PipelineLayout::compile(Context& context)
     {
         for (auto dsl : setLayouts)
         {
-            dsl->compile(context);
+            if (dsl) dsl->compile(context);
         }
         _implementation[context.deviceID] = PipelineLayout::Implementation::create(context.device, setLayouts, pushConstantRanges, flags);
     }
@@ -114,7 +122,10 @@ PipelineLayout::Implementation::Implementation(Device* device, const DescriptorS
     std::vector<VkDescriptorSetLayout> layouts;
     for (auto& dsl : descriptorSetLayouts)
     {
-        layouts.push_back(dsl->vk(device->deviceID));
+        if (dsl)
+            layouts.push_back(dsl->vk(device->deviceID));
+        else
+            layouts.push_back(0);
     }
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo;

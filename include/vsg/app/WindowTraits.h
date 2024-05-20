@@ -27,12 +27,14 @@ namespace vsg
     {
     public:
         WindowTraits();
-        explicit WindowTraits(const WindowTraits& traits);
+        explicit WindowTraits(const WindowTraits& traits, const CopyOp& copyop = {});
         explicit WindowTraits(const std::string& title);
         WindowTraits(int32_t in_x, int32_t in_y, uint32_t in_width, uint32_t in_height, const std::string& title = "vsg window");
         WindowTraits(uint32_t in_width, uint32_t in_height, const std::string& title = "vsg window");
 
         WindowTraits& operator=(const WindowTraits&) = delete;
+
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return WindowTraits::create(*this, copyop); }
 
         /// set default values, called by all constructors except copy constructor
         void defaults();
@@ -69,9 +71,14 @@ namespace vsg
         std::vector<float> queuePiorities{1.0, 0.0};
         VkPipelineStageFlagBits imageAvailableSemaphoreWaitFlag = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-        bool debugLayer = false;
-        bool synchronizationLayer = false;
-        bool apiDumpLayer = false;
+        // hints to which extenstion to enable during Instance/Device setup
+        bool debugLayer = false;           // VK_LAYER_KHRONOS_validation
+        bool synchronizationLayer = false; // VK_LAYER_KHRONOS_synchronization2
+        bool apiDumpLayer = false;         // VK_LAYER_LUNARG_api_dump
+        bool debugUtils = false;           // VK_EXT_debug_utils
+
+        // Device to use, if not assigned use the device preferences below
+        ref_ptr<vsg::Device> device;
 
         // device preferences
         vsg::Names instanceExtensionNames;
@@ -85,8 +92,6 @@ namespace vsg
         // be configured with the maximum requested value that is
         // supported by the device.
         VkSampleCountFlags samples = VK_SAMPLE_COUNT_1_BIT;
-
-        Window* shareWindow = nullptr;
 
         std::any nativeWindow;
         std::any systemConnection;

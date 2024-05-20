@@ -37,7 +37,7 @@ namespace vsg
         bool requiresViewerUpdate() const;
     };
 
-    /// ComppileManager is a helper class that compiles subgraphs for the window/framebuffer associated with the CompileManager.
+    /// CompileManager is a helper class that compiles subgraphs for the windows/framebuffers associated with the CompileManager.
     class VSG_DECLSPEC CompileManager : public Inherit<Object, CompileManager>
     {
     public:
@@ -57,6 +57,9 @@ namespace vsg
 
         /// add a compile Context for all the Views assigned to a Viewer
         void add(const Viewer& viewer, const ResourceRequirements& resourceRequirements = {});
+
+        /// assign Instrumentation to all CompileTraversal and their associated Context
+        void assignInstrumentation(ref_ptr<Instrumentation> in_instrumentation);
 
         using ContextSelectionFunction = std::function<bool(vsg::Context&)>;
 

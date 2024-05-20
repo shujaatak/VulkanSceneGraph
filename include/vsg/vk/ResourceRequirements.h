@@ -25,7 +25,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
-    /// ResourceRequirements provides a container for various Vulkan resource requirements that be used to help guide allocation of resources.
+    /// ResourceRequirements provides a container for various Vulkan resource requirements that can be used to help guide allocation of resources.
     class VSG_DECLSPEC ResourceRequirements
     {
     public:
@@ -39,17 +39,25 @@ namespace vsg
         uint32_t computeNumDescriptorSets() const;
         DescriptorPoolSizes computeDescriptorPoolSizes() const;
 
-        struct BinDetails
+        struct ViewDetails
         {
             std::set<int32_t> indices;
             std::set<const Bin*> bins;
+            std::set<const Light*> lights;
+
+            void add(ViewDetails& vd)
+            {
+                indices.insert(vd.indices.begin(), vd.indices.end());
+                bins.insert(vd.bins.begin(), vd.bins.end());
+                lights.insert(vd.lights.begin(), vd.lights.end());
+            }
         };
 
         using Descriptors = std::set<const Descriptor*>;
         using DescriptorSets = std::set<const DescriptorSet*>;
         using DescriptorTypeMap = std::map<VkDescriptorType, uint32_t>;
-        using Views = std::map<const View*, BinDetails>;
-        using BinStack = std::stack<BinDetails>;
+        using Views = std::map<const View*, ViewDetails>;
+        using ViewDetailStack = std::stack<ViewDetails>;
 
         struct DynamicData
         {
@@ -78,7 +86,7 @@ namespace vsg
         DescriptorSets descriptorSets;
         DescriptorTypeMap descriptorTypeMap;
         Views views;
-        BinStack binStack;
+        ViewDetailStack viewDetailsStack;
 
         uint32_t maxSlot = 0;
         uint32_t externalNumDescriptorSets = 0;
@@ -86,6 +94,10 @@ namespace vsg
 
         VkDeviceSize minimumBufferSize = 16 * 1024 * 1024;
         VkDeviceSize minimumDeviceMemorySize = 16 * 1024 * 1024;
+
+        uivec2 numLightsRange = {8, 1024};
+        uivec2 numShadowMapsRange = {0, 64};
+        uivec2 shadowMapSize = {2048, 2048};
     };
     VSG_type_name(vsg::ResourceRequirements);
 
@@ -107,15 +119,16 @@ namespace vsg
         void apply(const Object& object) override;
         void apply(const ResourceHints& resourceHints) override;
         void apply(const Node& node) override;
-        void apply(const StateGroup& stategroup) override;
         void apply(const StateCommand& stateCommand) override;
         void apply(const DescriptorSet& descriptorSet) override;
         void apply(const Descriptor& descriptor) override;
         void apply(const DescriptorBuffer& descriptorBuffer) override;
         void apply(const DescriptorImage& descriptorImage) override;
         void apply(const PagedLOD& plod) override;
+        void apply(const Light& light) override;
         void apply(const View& view) override;
         void apply(const DepthSorted& depthSorted) override;
+        void apply(const Layer& layer) override;
         void apply(const Bin& bin) override;
         void apply(const Geometry& geometry) override;
         void apply(const VertexDraw& vid) override;
@@ -123,39 +136,8 @@ namespace vsg
         void apply(const BindVertexBuffers& bvb) override;
         void apply(const BindIndexBuffer& bib) override;
 
-        inline void apply(ref_ptr<BufferInfo> bufferInfo)
-        {
-            if (bufferInfo && bufferInfo->data && bufferInfo->data->dynamic())
-            {
-                if (bufferInfo->data->properties.dataVariance == DYNAMIC_DATA)
-                {
-                    requirements.earlyDynamicData.bufferInfos.push_back(bufferInfo);
-                }
-                else // DYNAMIC_DATA_TRANSFER_AFTER_RECORD)
-                {
-                    requirements.lateDynamicData.bufferInfos.push_back(bufferInfo);
-                }
-            }
-        }
-
-        inline void apply(ref_ptr<ImageInfo> imageInfo)
-        {
-            if (imageInfo && imageInfo->imageView && imageInfo->imageView->image)
-            {
-                auto& data = imageInfo->imageView->image->data;
-                if (data && data->dynamic())
-                {
-                    if (data->properties.dataVariance == DYNAMIC_DATA)
-                    {
-                        requirements.earlyDynamicData.imageInfos.push_back(imageInfo);
-                    }
-                    else // DYNAMIC_DATA_TRANSFER_AFTER_RECORD)
-                    {
-                        requirements.lateDynamicData.imageInfos.push_back(imageInfo);
-                    }
-                }
-            }
-        }
+        virtual void apply(ref_ptr<BufferInfo> bufferInfo);
+        virtual void apply(ref_ptr<ImageInfo> imageInfo);
 
     protected:
         uint32_t _numResourceHintsAbove = 0;

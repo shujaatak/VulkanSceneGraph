@@ -71,7 +71,7 @@ namespace vsg
         }
     };
 
-    /// MatrixStack used internally by vsg::State to manage stack of project or modelview matrices
+    /// MatrixStack used internally by vsg::State to manage stack of projection or modelview matrices
     class MatrixStack
     {
     public:
@@ -79,7 +79,7 @@ namespace vsg
             offset(in_offset)
         {
             // make sure there is an initial matrix
-            matrixStack.emplace(mat4());
+            matrixStack.emplace(dmat4());
             dirty = true;
         }
 
@@ -223,14 +223,13 @@ namespace vsg
         }
     };
 
-    /// vsg::State used by vsg::RecordTraversal to manage state stacks, projection, modelview matrix and frustum stacks.
+    /// vsg::State is used by vsg::RecordTraversal to manage state stacks, projection and modelview matrices and frustum stacks.
     class State : public Inherit<Object, State>
     {
     public:
-        explicit State(CommandBuffer* commandBuffer, uint32_t maxSlot) :
-            _commandBuffer(commandBuffer),
+        explicit State(uint32_t maxSlot) :
             dirty(false),
-            stateStacks(maxSlot + 1)
+            stateStacks(static_cast<size_t>(maxSlot) + 1)
         {
         }
 
@@ -244,12 +243,23 @@ namespace vsg
         using FrustumStack = std::stack<Frustum>;
         FrustumStack _frustumStack;
 
-        bool dirty;
+        bool dirty = true;
+
+        bool inheritViewForLODScaling = false;
+        dmat4 inheritedProjectionMatrix;
+        dmat4 inheritedViewMatrix;
+        dmat4 inheritedViewTransform;
 
         StateStacks stateStacks;
 
         MatrixStack projectionMatrixStack{0};
         MatrixStack modelviewMatrixStack{64};
+
+        void setInhertiedViewProjectionAndViewMatrix(const dmat4& projMatrix, const dmat4& viewMatrix)
+        {
+            inheritedProjectionMatrix = projMatrix;
+            inheritedViewMatrix = viewMatrix;
+        }
 
         void setProjectionAndViewMatrix(const dmat4& projMatrix, const dmat4& viewMatrix)
         {
@@ -263,6 +273,11 @@ namespace vsg
 
             // clear frustum stack
             while (!_frustumStack.empty()) _frustumStack.pop();
+
+            if (inheritViewForLODScaling)
+            {
+                inheritedViewTransform = inheritedViewMatrix * inverse(viewMatrix);
+            }
 
             // push frustum in world coords
             pushFrustum();
@@ -287,7 +302,10 @@ namespace vsg
         inline void pushFrustum()
         {
             _frustumStack.push(Frustum(_frustumProjected, modelviewMatrixStack.top()));
-            _frustumStack.top().computeLodScale(projectionMatrixStack.top(), modelviewMatrixStack.top());
+            if (inheritViewForLODScaling)
+                _frustumStack.top().computeLodScale(inheritedProjectionMatrix, inheritedViewTransform * modelviewMatrixStack.top());
+            else
+                _frustumStack.top().computeLodScale(projectionMatrixStack.top(), modelviewMatrixStack.top());
         }
 
         inline void applyFrustum()

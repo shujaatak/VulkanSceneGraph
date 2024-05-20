@@ -17,15 +17,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/Export.h>
 #include <vsg/nodes/Bin.h>
 #include <vsg/nodes/Group.h>
+#include <vsg/utils/Instrumentation.h>
 #include <vsg/vk/CommandBuffer.h>
 
 namespace vsg
 {
 
-    /// CommandGraph is a group node that sits at the top of the scene graph and manages the recording of it's subgraph to Vulkan command buffers.
+    /// CommandGraph is a group node that sits at the top of the scene graph and manages the recording of its subgraph to Vulkan command buffers.
     class VSG_DECLSPEC CommandGraph : public Inherit<Group, CommandGraph>
     {
     public:
+        CommandGraph();
         CommandGraph(ref_ptr<Device> in_device, int family);
         explicit CommandGraph(ref_ptr<Window> in_window, ref_ptr<Node> child = {});
 
@@ -34,17 +36,22 @@ namespace vsg
         ref_ptr<Framebuffer> framebuffer;
         ref_ptr<Window> window;
         ref_ptr<Device> device;
-        ref_ptr<Camera> camera;
 
         int queueFamily = -1;
         int presentFamily = -1;
         uint32_t maxSlot = 2;
+        int submitOrder = 0;
+
+        ref_ptr<RecordTraversal> getOrCreateRecordTraversal();
 
         ref_ptr<RecordTraversal> recordTraversal;
 
         virtual VkCommandBufferLevel level() const;
         virtual void reset();
-        virtual void record(CommandBuffers& recordedCommandBuffers, ref_ptr<FrameStamp> frameStamp = {}, ref_ptr<DatabasePager> databasePager = {});
+        virtual void record(ref_ptr<RecordedCommandBuffers> recordedCommandBuffers, ref_ptr<FrameStamp> frameStamp = {}, ref_ptr<DatabasePager> databasePager = {});
+
+        /// hook for assigning Instrumentation to enable profiling of record traversal.
+        ref_ptr<Instrumentation> instrumentation;
 
     protected:
         virtual ~CommandGraph();

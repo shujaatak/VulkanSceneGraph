@@ -1,5 +1,3 @@
-include(CheckCXXSourceCompiles)
-
 # collect all the headers in the source directory
 file(GLOB HEADERS ${VSG_SOURCE_DIR}/include/vsg/*.h ${VSG_SOURCE_DIR}/include/vsg/*/*.h)
 
@@ -39,11 +37,23 @@ set(SOURCES
     nodes/VertexDraw.cpp
     nodes/VertexIndexDraw.cpp
     nodes/DepthSorted.cpp
+    nodes/Layer.cpp
     nodes/Bin.cpp
     nodes/Switch.cpp
     nodes/StateGroup.cpp
-    nodes/Light.cpp
     nodes/TileDatabase.cpp
+    nodes/InstrumentationNode.cpp
+    nodes/RegionOfInterest.cpp
+
+    lighting/Light.cpp
+    lighting/AmbientLight.cpp
+    lighting/DirectionalLight.cpp
+    lighting/PointLight.cpp
+    lighting/SpotLight.cpp
+    lighting/ShadowSettings.cpp
+    lighting/HardShadows.cpp
+    lighting/SoftShadows.cpp
+    lighting/PercentageCloserSoftShadows.cpp
 
     commands/BindIndexBuffer.cpp
     commands/BindVertexBuffers.cpp
@@ -54,6 +64,7 @@ set(SOURCES
     commands/CopyAndReleaseBuffer.cpp
     commands/CopyAndReleaseImage.cpp
     commands/ClearAttachments.cpp
+    commands/ClearImage.cpp
     commands/PipelineBarrier.cpp
     commands/Event.cpp
     commands/NextSubPass.cpp
@@ -66,6 +77,7 @@ set(SOURCES
     commands/SetLineWidth.cpp
     commands/SetScissor.cpp
     commands/SetViewport.cpp
+    commands/SetPrimitiveTopology.cpp
     commands/ResolveImage.cpp
     commands/ResetQueryPool.cpp
     commands/WriteTimestamp.cpp
@@ -180,6 +192,16 @@ set(SOURCES
     meshshaders/DrawMeshTasksIndirect.cpp
     meshshaders/DrawMeshTasksIndirectCount.cpp
 
+    animation/Animation.cpp
+    animation/AnimationGroup.cpp
+    animation/AnimationManager.cpp
+    animation/CameraAnimation.cpp
+    animation/FindAnimations.cpp
+    animation/Joint.cpp
+    animation/JointSampler.cpp
+    animation/MorphSampler.cpp
+    animation/TransformSampler.cpp
+
     ui/UIEvent.cpp
     ui/ApplicationEvent.cpp
     ui/KeyEvent.cpp
@@ -201,10 +223,11 @@ set(SOURCES
     vk/Device.cpp
     vk/DeviceFeatures.cpp
     vk/DeviceMemory.cpp
-    vk/Extensions.cpp
+    vk/DeviceExtensions.cpp
     vk/Fence.cpp
     vk/Framebuffer.cpp
     vk/Instance.cpp
+    vk/InstanceExtensions.cpp
     vk/MemoryBufferPools.cpp
     vk/PhysicalDevice.cpp
     vk/Queue.cpp
@@ -214,7 +237,6 @@ set(SOURCES
     vk/Swapchain.cpp
     vk/ResourceRequirements.cpp
 
-    utils/AnimationPath.cpp
     utils/CommandLine.cpp
     utils/Builder.cpp
     utils/SharedObjects.cpp
@@ -223,8 +245,13 @@ set(SOURCES
     utils/ShaderCompiler.cpp
     utils/ComputeBounds.cpp
     utils/Intersector.cpp
+    utils/Instrumentation.cpp
+    utils/GpuAnnotation.cpp
     utils/LineSegmentIntersector.cpp
     utils/LoadPagedLOD.cpp
+    utils/FindDynamicObjects.cpp
+    utils/PropagateDynamicObjects.cpp
+    utils/Profiler.cpp
 )
 
 if (${VSG_SUPPORTS_ShaderCompiler})
@@ -241,10 +268,20 @@ set(LIBRARIES PUBLIC
 
 # Check for std::atomic
 if(NOT MSVC AND NOT ANDROID AND NOT APPLE)
+  include(CheckCXXSourceCompiles)
+
   check_cxx_source_compiles("
     #include <atomic>
-    std::atomic<int> a;
-    int main() { return a; }"
+    int main()
+    {
+        std::atomic_uint64_t a64(1);
+        auto orig_value = a64.load();
+
+        uint64_t new_value = 1;
+        auto r = a64.compare_exchange_weak(orig_value, new_value);
+
+        return 0;
+    }"
     HAVE_CXX_ATOMIC_WITHOUT_LIB
   )
   if(NOT HAVE_CXX_ATOMIC_WITHOUT_LIB)
@@ -314,7 +351,7 @@ if(MSVC)
 
     SET_OUTPUT_DIR_PROPERTY(vsg "")
 
-    option(ENABLE_MP_FLAG "Turning on this option will add the multi-processor flag in MSVC for VSG and it's included projects" ON)
+    option(ENABLE_MP_FLAG "Turning on this option will add the multi-processor flag in MSVC for VSG and its included projects" ON)
 
     if(ENABLE_MP_FLAG)
         target_compile_options(vsg PRIVATE "/MP")

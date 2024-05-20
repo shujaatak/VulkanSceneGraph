@@ -12,7 +12,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-// we can't implement the anonymous union/structs combination without causing warnings, so disabled them for just this header
+// we can't implement the anonymous union/structs combination without causing warnings, so disable them for just this header
 #if defined(__GNUC__)
 #    pragma GCC diagnostic push
 #    pragma GCC diagnostic ignored "-Wpedantic"
@@ -26,11 +26,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/type_name.h>
 
 #include <cmath>
+#include <cstdint>
+#include <type_traits>
 
 namespace vsg
 {
 
-    /// t_vec2 template class that a represents a 2D vector
+    /// t_vec2 template class that represents a 2D vector
     template<typename T>
     struct t_vec2
     {
@@ -134,14 +136,14 @@ namespace vsg
         explicit operator bool() const noexcept { return value[0] != 0.0 || value[1] != 0.0; }
     };
 
-    using vec2 = t_vec2<float>;           // float 2D vector
-    using dvec2 = t_vec2<double>;         // double 2D vector
-    using bvec2 = t_vec2<std::int8_t>;    // signed 8 bit integer 2D vector
-    using svec2 = t_vec2<std::int16_t>;   //  signed 16 bit integer 2D vector
-    using ivec2 = t_vec2<std::int32_t>;   //  signed 32 bit integer 2D vector
-    using ubvec2 = t_vec2<std::uint8_t>;  //  unsigned 8 bit integer 2D vector
-    using usvec2 = t_vec2<std::uint16_t>; //  unsigned 16 bit integer 2D vector
-    using uivec2 = t_vec2<std::uint32_t>; //  unsigned 32 bit integer 2D vector
+    using vec2 = t_vec2<float>;      // float 2D vector
+    using dvec2 = t_vec2<double>;    // double 2D vector
+    using bvec2 = t_vec2<int8_t>;    // signed 8 bit integer 2D vector
+    using svec2 = t_vec2<int16_t>;   //  signed 16 bit integer 2D vector
+    using ivec2 = t_vec2<int32_t>;   //  signed 32 bit integer 2D vector
+    using ubvec2 = t_vec2<uint8_t>;  //  unsigned 8 bit integer 2D vector
+    using usvec2 = t_vec2<uint16_t>; //  unsigned 16 bit integer 2D vector
+    using uivec2 = t_vec2<uint32_t>; //  unsigned 32 bit integer 2D vector
 
     VSG_type_name(vsg::vec2);
     VSG_type_name(vsg::dvec2);
@@ -240,7 +242,7 @@ namespace vsg
         return lhs[0] * rhs[0] + lhs[1] * rhs[1];
     }
 
-    /// cross product of a vec2 can be thought of cross product of vec3's with the z value of 0.0/vec3's in the xy plane.
+    /// cross product of a vec2 can be thought of as cross product of vec3's with the z value of 0.0/vec3's in the xy plane.
     /// The returned value is the length of the resulting vec3 cross product, and can be treated as the signed area of the parallelogram, negative if rhs is clockwise from lhs when looking down on xy plane.
     template<typename T>
     constexpr T cross(const t_vec2<T>& lhs, const t_vec2<T>& rhs)

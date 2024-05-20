@@ -20,17 +20,12 @@ namespace vsg
 {
 
     /** VertexDraw provides a lightweight way of binding vertex arrays and then issuing a vkCmdDrawIndexed command.
-      * Higher performance equivalent to use of individual vsg::BindVertexBuffers and vsg::DrawIndex commands.*/
+      * Higher performance equivalent to use of individual vsg::BindVertexBuffers and vsg::Draw commands.*/
     class VSG_DECLSPEC VertexDraw : public Inherit<Command, VertexDraw>
     {
     public:
         VertexDraw();
-
-        void read(Input& input) override;
-        void write(Output& output) const override;
-
-        void compile(Context& context) override;
-        void record(CommandBuffer& commandBuffer) const override;
+        VertexDraw(const VertexDraw& rhs, const CopyOp& copyop = {});
 
         // vkCmdDraw settings
         // vkCmdDraw(commandBuffer, vertexCount, instanceCount, firstVertex, firstInstance);
@@ -43,6 +38,16 @@ namespace vsg
         BufferInfoList arrays;
 
         void assignArrays(const DataList& in_arrays);
+
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return VertexDraw::create(*this, copyop); }
+        int compare(const Object& rhs) const override;
+
+        void read(Input& input) override;
+        void write(Output& output) const override;
+
+        void compile(Context& context) override;
+        void record(CommandBuffer& commandBuffer) const override;
 
     protected:
         virtual ~VertexDraw();

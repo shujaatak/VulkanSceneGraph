@@ -22,10 +22,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/io/Input.h>
 #include <vsg/io/Output.h>
 
-#define VSG_array(N, T) \
-    using N = Array<T>; \
-    template<>          \
-    constexpr const char* type_name<N>() noexcept { return "vsg::" #N; }
+#define VSG_array(N, T)                                                  \
+    using N = Array<T>;                                                  \
+    template<>                                                           \
+    constexpr const char* type_name<N>() noexcept { return "vsg::" #N; } \
+    template<>                                                           \
+    constexpr const char* type_name<const N>() noexcept { return "vsg::" #N; }
 
 namespace vsg
 {
@@ -42,8 +44,8 @@ namespace vsg
             _data(nullptr),
             _size(0) {}
 
-        Array(const Array& rhs) :
-            Data(rhs.properties, sizeof(value_type)),
+        Array(const Array& rhs, const CopyOp copyop = {}) :
+            Data(rhs, copyop),
             _data(nullptr),
             _size(rhs._size)
         {
@@ -110,7 +112,7 @@ namespace vsg
         template<typename... Args>
         static ref_ptr<Array> create(Args&&... args)
         {
-            return ref_ptr<Array>(new Array(args...));
+            return ref_ptr<Array>(new Array(std::forward<Args>(args)...));
         }
 
         static ref_ptr<Array> create(std::initializer_list<value_type> l)
@@ -123,12 +125,12 @@ namespace vsg
             return ref_ptr<Array>(new Array(data, offset, stride, l));
         }
 
-        ref_ptr<Data> clone() const override
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override
         {
-            return ref_ptr<Array>(new Array(*this));
+            return ref_ptr<Array>(new Array(*this, copyop));
         }
 
-        std::size_t sizeofObject() const noexcept override { return sizeof(Array); }
+        size_t sizeofObject() const noexcept override { return sizeof(Array); }
         const char* className() const noexcept override { return type_name<Array>(); }
         const std::type_info& type_info() const noexcept override { return typeid(*this); }
         bool is_compatible(const std::type_info& type) const noexcept override { return typeid(Array) == type || Data::is_compatible(type); }
@@ -139,7 +141,7 @@ namespace vsg
 
         void read(Input& input) override
         {
-            std::size_t original_total_size = size();
+            size_t original_total_size = size();
 
             Data::read(input);
 
@@ -154,9 +156,9 @@ namespace vsg
 
             if (input.matchPropertyName("data"))
             {
-                std::size_t new_total_size = computeValueCountIncludingMipmaps(width_size, 1, 1, properties.maxNumMipmaps);
+                size_t new_total_size = computeValueCountIncludingMipmaps(width_size, 1, 1, properties.maxNumMipmaps);
 
-                if (_data) // if data already may be able to reuse it
+                if (_data) // if data exists already may be able to reuse it
                 {
                     if (original_total_size != new_total_size) // if existing data is a different size delete old, and create new
                     {
@@ -198,7 +200,7 @@ namespace vsg
             output.writeEndOfLine();
         }
 
-        std::size_t size() const { return (properties.maxNumMipmaps <= 1) ? _size : computeValueCountIncludingMipmaps(_size, 1, 1, properties.maxNumMipmaps); }
+        size_t size() const { return (properties.maxNumMipmaps <= 1) ? _size : computeValueCountIncludingMipmaps(_size, 1, 1, properties.maxNumMipmaps); }
 
         bool available() const { return _data != nullptr; }
         bool empty() const { return _data == nullptr; }
@@ -267,7 +269,7 @@ namespace vsg
             dirty();
         }
 
-        // release the data so that ownership can be passed on, the local data pointer and size is set to 0 and destruction of Array will no result in the data being deleted.
+        // release the data so that ownership can be passed on, the local data pointer and size is set to 0 and destruction of Array will not result in the data being deleted.
         // when the data is stored in a separate vsg::Data object then return nullptr and do not attempt to release data.
         void* dataRelease() override
         {
@@ -284,17 +286,17 @@ namespace vsg
             }
         }
 
-        std::size_t valueSize() const override { return sizeof(value_type); }
-        std::size_t valueCount() const override { return size(); }
+        size_t valueSize() const override { return sizeof(value_type); }
+        size_t valueCount() const override { return size(); }
 
         bool dataAvailable() const override { return available(); }
-        std::size_t dataSize() const override { return size() * properties.stride; }
+        size_t dataSize() const override { return size() * properties.stride; }
 
         void* dataPointer() override { return _data; }
         const void* dataPointer() const override { return _data; }
 
-        void* dataPointer(std::size_t i) override { return data(i); }
-        const void* dataPointer(std::size_t i) const override { return data(i); }
+        void* dataPointer(size_t i) override { return data(i); }
+        const void* dataPointer(size_t i) const override { return data(i); }
 
         uint32_t dimensions() const override { return 1; }
 
@@ -305,16 +307,16 @@ namespace vsg
         value_type* data() { return _data; }
         const value_type* data() const { return _data; }
 
-        inline value_type* data(std::size_t i) { return reinterpret_cast<value_type*>(reinterpret_cast<uint8_t*>(_data) + i * properties.stride); }
-        inline const value_type* data(std::size_t i) const { return reinterpret_cast<const value_type*>(reinterpret_cast<const uint8_t*>(_data) + i * properties.stride); }
+        inline value_type* data(size_t i) { return reinterpret_cast<value_type*>(reinterpret_cast<uint8_t*>(_data) + i * static_cast<size_t>(properties.stride)); }
+        inline const value_type* data(size_t i) const { return reinterpret_cast<const value_type*>(reinterpret_cast<const uint8_t*>(_data) + i * static_cast<size_t>(properties.stride)); }
 
-        value_type& operator[](std::size_t i) { return *data(i); }
-        const value_type& operator[](std::size_t i) const { return *data(i); }
+        value_type& operator[](size_t i) { return *data(i); }
+        const value_type& operator[](size_t i) const { return *data(i); }
 
-        value_type& at(std::size_t i) { return *data(i); }
-        const value_type& at(std::size_t i) const { return *data(i); }
+        value_type& at(size_t i) { return *data(i); }
+        const value_type& at(size_t i) const { return *data(i); }
 
-        void set(std::size_t i, const value_type& v) { *data(i) = v; }
+        void set(size_t i, const value_type& v) { *data(i) = v; }
 
         Data* storage() { return _storage; }
         const Data* storage() const { return _storage; }

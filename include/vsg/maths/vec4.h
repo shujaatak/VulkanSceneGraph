@@ -12,7 +12,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-// we can't implement the anonymous union/structs combination without causing warnings, so disabled them for just this header
+// we can't implement the anonymous union/structs combination without causing warnings, so disable them for just this header
 #if defined(__GNUC__)
 #    pragma GCC diagnostic push
 #    pragma GCC diagnostic ignored "-Wpedantic"
@@ -24,11 +24,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #endif
 
 #include <vsg/maths/vec3.h>
+#include <vsg/vk/vulkan.h>
 
 namespace vsg
 {
 
-    /// t_vec4 template class that a represents a 4D vector
+    /// t_vec4 template class that represents a 4D vector
     template<typename T>
     struct t_vec4
     {
@@ -61,6 +62,9 @@ namespace vsg
         constexpr t_vec4(value_type in_x, value_type in_y, value_type in_z, value_type in_w) :
             value{in_x, in_y, in_z, in_w} {}
 
+        constexpr explicit t_vec4(const VkClearColorValue& v) :
+            value{static_cast<value_type>(v.float32[0]), static_cast<value_type>(v.float32[1]), static_cast<value_type>(v.float32[2]), static_cast<value_type>(v.float32[3])} {}
+
         template<typename R>
         constexpr explicit t_vec4(const t_vec4<R>& v) :
             value{static_cast<T>(v.x), static_cast<T>(v.y), static_cast<T>(v.z), static_cast<T>(v.w)} {}
@@ -85,6 +89,15 @@ namespace vsg
             value[1] = static_cast<value_type>(rhs[1]);
             value[2] = static_cast<value_type>(rhs[2]);
             value[3] = static_cast<value_type>(rhs[3]);
+            return *this;
+        }
+
+        t_vec4& operator=(const VkClearColorValue& v)
+        {
+            value[0] = static_cast<value_type>(v.float32[0]);
+            value[1] = static_cast<value_type>(v.float32[1]);
+            value[2] = static_cast<value_type>(v.float32[2]);
+            value[3] = static_cast<value_type>(v.float32[3]);
             return *this;
         }
 
@@ -155,17 +168,19 @@ namespace vsg
             return *this;
         }
 
+        operator VkClearColorValue() const noexcept { return VkClearColorValue{{r, g, b, a}}; }
+
         explicit operator bool() const noexcept { return value[0] != 0.0 || value[1] != 0.0 || value[2] != 0.0 || value[3] != 0.0; }
     };
 
-    using vec4 = t_vec4<float>;           // float 4D vector
-    using dvec4 = t_vec4<double>;         // double 4D vector
-    using bvec4 = t_vec4<std::int8_t>;    // signed 8 bit integer 4D vector
-    using svec4 = t_vec4<std::int16_t>;   //  signed 16 bit integer 4D vector
-    using ivec4 = t_vec4<std::int32_t>;   //  signed 32 bit integer 4D vector
-    using ubvec4 = t_vec4<std::uint8_t>;  //  unsigned 8 bit integer 4D vector
-    using usvec4 = t_vec4<std::uint16_t>; //  unsigned 16 bit integer 4D vector
-    using uivec4 = t_vec4<std::uint32_t>; //  unsigned 32 bit integer 4D vector
+    using vec4 = t_vec4<float>;      // float 4D vector
+    using dvec4 = t_vec4<double>;    // double 4D vector
+    using bvec4 = t_vec4<int8_t>;    // signed 8 bit integer 4D vector
+    using svec4 = t_vec4<int16_t>;   //  signed 16 bit integer 4D vector
+    using ivec4 = t_vec4<int32_t>;   //  signed 32 bit integer 4D vector
+    using ubvec4 = t_vec4<uint8_t>;  //  unsigned 8 bit integer 4D vector
+    using usvec4 = t_vec4<uint16_t>; //  unsigned 16 bit integer 4D vector
+    using uivec4 = t_vec4<uint32_t>; //  unsigned 32 bit integer 4D vector
 
     VSG_type_name(vsg::vec4);
     VSG_type_name(vsg::dvec4);

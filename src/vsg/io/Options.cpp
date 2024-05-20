@@ -15,6 +15,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/state/DescriptorSetLayout.h>
 #include <vsg/threading/OperationThreads.h>
 #include <vsg/utils/CommandLine.h>
+#include <vsg/utils/FindDynamicObjects.h>
+#include <vsg/utils/PropagateDynamicObjects.h>
 #include <vsg/utils/ShaderSet.h>
 #include <vsg/utils/SharedObjects.h>
 
@@ -29,6 +31,9 @@ Options::Options()
     formatCoordinateConventions[".dae"] = CoordinateConvention::Y_UP;
     formatCoordinateConventions[".stl"] = CoordinateConvention::NO_PREFERENCE;
     formatCoordinateConventions[".obj"] = CoordinateConvention::NO_PREFERENCE;
+
+    findDynamicObjects = FindDynamicObjects::create();
+    propagateDynamicObjects = PropagateDynamicObjects::create();
 }
 
 Options::Options(const Options& options) :
@@ -44,7 +49,11 @@ Options::Options(const Options& options) :
     mapRGBtoRGBAHint(options.mapRGBtoRGBAHint),
     sceneCoordinateConvention(options.sceneCoordinateConvention),
     formatCoordinateConventions(options.formatCoordinateConventions),
-    shaderSets(options.shaderSets)
+    shaderSets(options.shaderSets),
+    inheritedState(options.inheritedState),
+    instrumentation(options.instrumentation),
+    findDynamicObjects(options.findDynamicObjects),
+    propagateDynamicObjects(options.propagateDynamicObjects)
 {
     getOrCreateAuxiliary();
     // copy any meta data.
@@ -64,7 +73,7 @@ int Options::compare(const Object& rhs_object) const
 
     if ((result = compare_pointer_container(readerWriters, rhs.readerWriters))) return result;
     if ((result = compare_value(checkFilenameHint, rhs.checkFilenameHint))) return result;
-    if ((result = compare_value_container(paths, rhs.paths))) return result;
+    if ((result = compare_container(paths, rhs.paths))) return result;
     if ((result = compare_value(fileCache, rhs.fileCache))) return result;
     if ((result = compare_value(extensionHint, rhs.extensionHint))) return result;
     if ((result = compare_value(mapRGBtoRGBAHint, rhs.mapRGBtoRGBAHint))) return result;

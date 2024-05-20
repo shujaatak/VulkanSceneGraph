@@ -29,7 +29,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsgWin32
 {
-    class KeyboardMap : public vsg::Object
+    class VSG_DECLSPEC KeyboardMap : public vsg::Object
     {
     public:
         KeyboardMap();
@@ -88,6 +88,15 @@ namespace vsgWin32
             if (keyState[VK_CAPITAL] & 0x01) modifierMask |= vsg::KeyModifier::MODKEY_CapsLock;
             if (keyState[VK_NUMLOCK] & 0x01) modifierMask |= vsg::KeyModifier::MODKEY_NumLock;
 
+            // Check if the modifier keys are down (these are non-toggle keys, so the high-order bit is relevant!)
+            // again, vsg only has a side-independent modifier
+            if (keyState[VK_LSHIFT] & 0x80) modifierMask |= vsg::KeyModifier::MODKEY_Shift;
+            if (keyState[VK_RSHIFT] & 0x80) modifierMask |= vsg::KeyModifier::MODKEY_Shift;
+            if (keyState[VK_LCONTROL] & 0x80) modifierMask |= vsg::KeyModifier::MODKEY_Control;
+            if (keyState[VK_RCONTROL] & 0x80) modifierMask |= vsg::KeyModifier::MODKEY_Control;
+            if (keyState[VK_LMENU] & 0x80) modifierMask |= vsg::KeyModifier::MODKEY_Alt;
+            if (keyState[VK_RMENU] & 0x80) modifierMask |= vsg::KeyModifier::MODKEY_Alt;
+
             // This is the final keyModifier
             keyModifier = static_cast<vsg::KeyModifier>(modifierMask);
 
@@ -119,20 +128,50 @@ namespace vsgWin32
         return static_cast<vsg::ButtonMask>(mask);
     }
 
-    inline uint32_t getButtonDownEventDetail(UINT buttonMsg)
+    inline uint32_t getButtonDownEventDetail(UINT buttonMsg, WORD wParamHi)
     {
-        return buttonMsg == WM_LBUTTONDOWN ? 1 : (buttonMsg == WM_MBUTTONDOWN ? 2 : buttonMsg == WM_RBUTTONDOWN ? 3
-                                                                                                                : (buttonMsg == WM_XBUTTONDOWN ? 4 : 0)); // need to determine x1, x2
+        switch (buttonMsg)
+        {
+        case WM_LBUTTONDBLCLK:
+        case WM_LBUTTONDOWN: return 1;
+        case WM_MBUTTONDBLCLK:
+        case WM_MBUTTONDOWN: return 2;
+        case WM_RBUTTONDBLCLK:
+        case WM_RBUTTONDOWN: return 3;
+        case WM_XBUTTONDBLCLK:
+        case WM_XBUTTONDOWN:
+            if (wParamHi == XBUTTON1)
+                return 4;
+            else if (wParamHi == XBUTTON2)
+                return 5;
+            else
+                return 0;
+        default:
+            return 0;
+        }
     }
 
-    inline uint32_t getButtonUpEventDetail(UINT buttonMsg)
+    inline uint32_t getButtonUpEventDetail(UINT buttonMsg, WORD wParamHi)
     {
-        return buttonMsg == WM_LBUTTONUP ? 1 : (buttonMsg == WM_MBUTTONUP ? 2 : buttonMsg == WM_RBUTTONUP ? 3
-                                                                                                          : (buttonMsg == WM_XBUTTONUP ? 4 : 0));
+        switch (buttonMsg)
+        {
+        case WM_LBUTTONUP: return 1;
+        case WM_MBUTTONUP: return 2;
+        case WM_RBUTTONUP: return 3;
+        case WM_XBUTTONUP:
+            if (wParamHi == XBUTTON1)
+                return 4;
+            else if (wParamHi == XBUTTON2)
+                return 5;
+            else
+                return 0;
+        default:
+            return 0;
+        }
     }
 
     /// Win32_Window implements Win32 specific window creation, event handling and vulkan Surface setup.
-    class Win32_Window : public vsg::Inherit<vsg::Window, Win32_Window>
+    class VSG_DECLSPEC Win32_Window : public vsg::Inherit<vsg::Window, Win32_Window>
     {
     public:
         Win32_Window(vsg::ref_ptr<vsg::WindowTraits> traits);
@@ -146,14 +185,16 @@ namespace vsgWin32
 
         bool visible() const override;
 
+        void releaseWindow() override;
+
         bool pollEvents(vsg::UIEvents& events) override;
 
         void resize() override;
 
-        operator HWND() { return _window; }
-        operator const HWND() const { return _window; }
+        operator HWND() const { return _window; }
 
-        LRESULT handleWin32Messages(UINT msg, WPARAM wParam, LPARAM lParam);
+        /// handle Win32 event messages, return true if handled.
+        virtual bool handleWin32Messages(UINT msg, WPARAM wParam, LPARAM lParam);
 
     protected:
         virtual ~Win32_Window();

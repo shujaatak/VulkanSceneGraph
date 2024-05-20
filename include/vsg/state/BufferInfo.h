@@ -33,6 +33,7 @@ namespace vsg
         BufferInfo(const BufferInfo&) = delete;
         BufferInfo& operator=(const BufferInfo&) = delete;
 
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override;
         int compare(const Object& rhs_object) const override;
 
         void release();
@@ -41,7 +42,7 @@ namespace vsg
         /// Requires associated buffer memory to be host visible, for non host visible buffers you must use a staging buffer
         void copyDataToBuffer();
 
-        /// Copy data to the VkBuffer associated with the a specified Device
+        /// Copy data to the VkBuffer associated with the specified Device
         /// Requires associated buffer memory to be host visible, for non host visible buffers you must use a staging buffer
         void copyDataToBuffer(uint32_t deviceID);
 
@@ -59,7 +60,7 @@ namespace vsg
             return data && data->differentModifiedCount(copiedModifiedCounts[deviceID]);
         }
 
-        /// return true if the BufferInfo's data has been modified and should be copied to the buffer, and sync the moificationCounts
+        /// return true if the BufferInfo's data has been modified and should be copied to the buffer, and sync the modification counts
         bool syncModifiedCounts(uint32_t deviceID)
         {
             return data && data->getModifiedCount(copiedModifiedCounts[deviceID]);

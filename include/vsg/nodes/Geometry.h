@@ -19,7 +19,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// Geometry node is class that provides vertex arrays, optional index array and a list of draw commands
+    /// Geometry node is a class that provides vertex arrays, optional index array and a list of draw commands
     /// that are recorded to command buffer during RecordTraversal. Provides a lower CPU overhead
     /// compared to the equivalent functionality of adding individual commands:
     ///     auto group = vsg::Commands::create();
@@ -30,12 +30,7 @@ namespace vsg
     {
     public:
         Geometry();
-
-        void read(Input& input) override;
-        void write(Output& output) const override;
-
-        void compile(Context& context) override;
-        void record(CommandBuffer& commandBuffer) const override;
+        Geometry(const Geometry& rhs, const CopyOp& copyop = {});
 
         using DrawCommands = std::vector<ref_ptr<Command>>;
 
@@ -47,6 +42,16 @@ namespace vsg
 
         void assignArrays(const DataList& in_arrays);
         void assignIndices(ref_ptr<vsg::Data> in_indices);
+
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return Geometry::create(*this, copyop); }
+        int compare(const Object& rhs) const override;
+
+        void read(Input& input) override;
+        void write(Output& output) const override;
+
+        void compile(Context& context) override;
+        void record(CommandBuffer& commandBuffer) const override;
 
     protected:
         virtual ~Geometry();

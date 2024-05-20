@@ -20,10 +20,12 @@ using namespace vsg;
 
 bool vsg::write(ref_ptr<Object> object, const Path& filename, ref_ptr<const Options> options)
 {
+    CPU_INSTRUMENTATION_L1_NC(options ? options->instrumentation.get() : nullptr, "write", COLOR_WRITE);
+
     bool fileWritten = false;
     if (options)
     {
-        // don't write the file if it's already contained in the ObjectCache
+        // don't write the file if it's already contained in the SharedObjects
         if (options->sharedObjects && options->sharedObjects->contains(filename, options)) return true;
 
         if (!options->readerWriters.empty())

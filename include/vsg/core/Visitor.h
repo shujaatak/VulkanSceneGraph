@@ -24,7 +24,7 @@ namespace vsg
     class Objects;
     class External;
 
-    // forward declare nodes classes
+    // forward declare node classes
     class Node;
     class Commands;
     class Group;
@@ -40,6 +40,7 @@ namespace vsg
     class VertexDraw;
     class VertexIndexDraw;
     class DepthSorted;
+    class Layer;
     class Bin;
     class Switch;
     class Light;
@@ -47,15 +48,29 @@ namespace vsg
     class DirectionalLight;
     class PointLight;
     class SpotLight;
+    class InstrumentationNode;
+    class RegionOfInterest;
 
-    // forward declare vulkan classes
+    // forward declare text classes
     class Text;
     class TextGroup;
     class TextTechnique;
     class TextLayout;
 
+    // forward declare animation classes
+    class Animation;
+    class AnimationGroup;
+    class AnimationSampler;
+    class TransformSampler;
+    class MorphSampler;
+    class JointSampler;
+    class Joint;
+
     // forward declare vulkan classes
     class BufferInfo;
+    class ImageInfo;
+    class ImageView;
+    class Image;
     class Compilable;
     class Command;
     class StateCommand;
@@ -64,6 +79,7 @@ namespace vsg
     class RenderPass;
     class BindDescriptorSet;
     class BindDescriptorSets;
+    class BindViewDescriptorSets;
     class Descriptor;
     class DescriptorBuffer;
     class DescriptorImage;
@@ -91,6 +107,8 @@ namespace vsg
     class DynamicState;
     class ResourceHints;
     class ClearAttachments;
+    class ClearColorImage;
+    class ClearDepthStencilImage;
     class QueryPool;
     class ResetQueryPool;
     class BeginQuery;
@@ -127,25 +145,43 @@ namespace vsg
     class FrameEvent;
 
     // forward declare util classes
-    class AnimationPath;
+    class ShaderCompileSettings;
 
     // forward declare viewer classes
     class Camera;
     class CommandGraph;
+    class SecondaryCommandGraph;
     class RenderGraph;
     class View;
     class Viewer;
+    class ViewMatrix;
+    class LookAt;
+    class RelativeViewMatrix;
+    class TrackingViewMatrix;
+    class ProjectionMatrix;
+    class Perspective;
+    class Orthographic;
+    class RelativeProjection;
+    class EllipsoidPerspective;
 
     // forward declare general classes
     class FrameStamp;
+    class Instrumentation;
 
     class VSG_DECLSPEC Visitor : public Object
     {
     public:
         Visitor();
 
+        Visitor(const Visitor& rhs, const CopyOp& copyop = {}) :
+            Object(rhs, copyop),
+            traversalMask(rhs.traversalMask),
+            overrideMask(rhs.overrideMask) {}
+
         Mask traversalMask = MASK_ALL;
         Mask overrideMask = MASK_OFF;
+
+        virtual Instrumentation* getInstrumentation() { return nullptr; }
 
         virtual void apply(Object&);
         virtual void apply(Objects&);
@@ -154,6 +190,7 @@ namespace vsg
 
         // Values
         virtual void apply(stringValue&);
+        virtual void apply(wstringValue&);
         virtual void apply(boolValue&);
         virtual void apply(intValue&);
         virtual void apply(uintValue&);
@@ -183,6 +220,8 @@ namespace vsg
         virtual void apply(uivec2Value&);
         virtual void apply(uivec3Value&);
         virtual void apply(uivec4Value&);
+        virtual void apply(mat4Value&);
+        virtual void apply(dmat4Value&);
 
         // Arrays
         virtual void apply(byteArray&);
@@ -290,6 +329,7 @@ namespace vsg
         virtual void apply(VertexDraw&);
         virtual void apply(VertexIndexDraw&);
         virtual void apply(DepthSorted&);
+        virtual void apply(Layer&);
         virtual void apply(Bin&);
         virtual void apply(Switch&);
         virtual void apply(Light&);
@@ -297,6 +337,8 @@ namespace vsg
         virtual void apply(DirectionalLight&);
         virtual void apply(PointLight&);
         virtual void apply(SpotLight&);
+        virtual void apply(InstrumentationNode&);
+        virtual void apply(RegionOfInterest&);
 
         // text
         virtual void apply(Text&);
@@ -304,8 +346,20 @@ namespace vsg
         virtual void apply(TextTechnique&);
         virtual void apply(TextLayout&);
 
+        // animation
+        virtual void apply(Animation&);
+        virtual void apply(AnimationGroup&);
+        virtual void apply(AnimationSampler&);
+        virtual void apply(JointSampler&);
+        virtual void apply(MorphSampler&);
+        virtual void apply(TransformSampler&);
+        virtual void apply(Joint&);
+
         // Vulkan nodes
         virtual void apply(BufferInfo&);
+        virtual void apply(ImageInfo&);
+        virtual void apply(ImageView&);
+        virtual void apply(Image&);
         virtual void apply(Command&);
         virtual void apply(StateCommand&);
         virtual void apply(StateSwitch&);
@@ -313,6 +367,7 @@ namespace vsg
         virtual void apply(RenderPass&);
         virtual void apply(BindDescriptorSet&);
         virtual void apply(BindDescriptorSets&);
+        virtual void apply(BindViewDescriptorSets&);
         virtual void apply(Descriptor&);
         virtual void apply(DescriptorBuffer&);
         virtual void apply(DescriptorImage&);
@@ -340,6 +395,8 @@ namespace vsg
         virtual void apply(Draw&);
         virtual void apply(DrawIndexed&);
         virtual void apply(ClearAttachments&);
+        virtual void apply(ClearColorImage&);
+        virtual void apply(ClearDepthStencilImage&);
         virtual void apply(QueryPool&);
         virtual void apply(ResetQueryPool&);
         virtual void apply(BeginQuery&);
@@ -376,17 +433,29 @@ namespace vsg
         virtual void apply(FrameEvent&);
 
         // utils
-        virtual void apply(AnimationPath&);
+        virtual void apply(ShaderCompileSettings&);
 
-        // viewer
+        // app
         virtual void apply(Camera&);
         virtual void apply(CommandGraph&);
+        virtual void apply(SecondaryCommandGraph&);
         virtual void apply(RenderGraph&);
         virtual void apply(View&);
         virtual void apply(Viewer&);
+        virtual void apply(ViewMatrix&);
+        virtual void apply(LookAt&);
+        virtual void apply(RelativeViewMatrix&);
+        virtual void apply(TrackingViewMatrix&);
+        virtual void apply(ProjectionMatrix&);
+        virtual void apply(Perspective&);
+        virtual void apply(Orthographic&);
+        virtual void apply(RelativeProjection&);
+        virtual void apply(EllipsoidPerspective&);
 
         // general classes
         virtual void apply(FrameStamp&);
+
+        bool is_compatible(const std::type_info& type) const noexcept override { return typeid(Visitor) == type || Object::is_compatible(type); }
     };
 
     // provide Value<>::accept() implementation

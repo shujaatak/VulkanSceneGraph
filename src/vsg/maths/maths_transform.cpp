@@ -203,7 +203,7 @@ dmat4 vsg::inverse(const dmat4& m)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 //
-// compute determinate of a matrix
+// compute determinant of a matrix
 //
 template<class T>
 T t_determinant(const t_mat4<T>& m)
@@ -221,12 +221,12 @@ T t_determinant(const t_mat4<T>& m)
     return det;
 }
 
-float determinant(const mat4& m)
+float vsg::determinant(const mat4& m)
 {
     return t_determinant<float>(m);
 }
 
-double determinant(const dmat4& m)
+double vsg::determinant(const dmat4& m)
 {
     return t_determinant<double>(m);
 }
@@ -278,7 +278,7 @@ bool t_decompose(const t_mat4<T>& m, t_vec3<T>& translation, t_quat<T>& rotation
 
         auto root = sqrt(rm[i][i] - rm[j][j] - rm[k][k] + static_cast<T>(1.0));
         auto half_inv_root = static_cast<T>(0.5) / root;
-        rotation[i] = static_cast<T>(0.5) / root;
+        rotation[i] = static_cast<T>(0.5) * root;
         rotation[j] = half_inv_root * (rm[i][j] + rm[j][i]);
         rotation[k] = half_inv_root * (rm[i][k] + rm[k][i]);
         rotation[3] = half_inv_root * (rm[j][k] - rm[k][j]);
@@ -317,14 +317,14 @@ t_sphere<T> t_computeFrustumBound(const t_mat4<T>& m)
     // TODO : depth range should probably be 0 to 1 for Vulkan, rather than -1 to 1 for OpenGL.
     //
 
-    // compute the a2 the radius squared of the near plane relative to the near planes mid point
+    // compute a2, the radius squared of the near plane relative to the near planes mid point
     vec_type near_center = inv_m * vec_type(0.0, 0.0, -1.0);
     value_type a2 = length2(inv_m * vec_type(-1.0, -1.0, -1.0) - near_center);
     update_radius2(a2, near_center, inv_m * vec_type(1.0, -1.0, -1.0));
     update_radius2(a2, near_center, inv_m * vec_type(1.0, 1.0, -1.0));
     update_radius2(a2, near_center, inv_m * vec_type(-1.0, 1.0, -1.0));
 
-    // compute the b2 the radius squared of the far plane relative to the far planes mid point
+    // compute b2, the radius squared of the far plane relative to the far planes mid point
     vec_type far_center = inv_m * vec_type(0.0, 0.0, 1.0);
     value_type b2 = length2(inv_m * vec_type(-1.0, -1.0, 1.0) - far_center);
     update_radius2(b2, far_center, inv_m * vec_type(1.0, -1.0, 1.0));
@@ -381,7 +381,7 @@ bool vsg::transform(CoordinateConvention source, CoordinateConvention destinatio
                        0.0, 0.0, 1.0, 0.0,
                        0.0, 0.0, 0.0, 1.0);
         }
-        else // destination most be Z_UP
+        else // destination must be Z_UP
         {
             matrix.set(0.0, 0.0, 1.0, 0.0,
                        0.0, 1.0, 0.0, 0.0,
@@ -398,7 +398,7 @@ bool vsg::transform(CoordinateConvention source, CoordinateConvention destinatio
                        0.0, 0.0, 1.0, 0.0,
                        0.0, 0.0, 0.0, 1.0);
         }
-        else // destination most be Z_UP
+        else // destination must be Z_UP
         {
             matrix.set(1.0, 0.0, 0.0, 0.0,
                        0.0, 0.0, 1.0, 0.0,
@@ -415,7 +415,7 @@ bool vsg::transform(CoordinateConvention source, CoordinateConvention destinatio
                        1.0, 0.0, 0.0, 0.0,
                        0.0, 0.0, 0.0, 1.0);
         }
-        else // destination most be Y_UP
+        else // destination must be Y_UP
         {
             matrix.set(1.0, 0.0, 0.0, 0.0,
                        0.0, 0.0, -1.0, 0.0,

@@ -13,12 +13,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/app/View.h>
 #include <vsg/io/Options.h>
 #include <vsg/nodes/Bin.h>
+#include <vsg/state/ViewDependentState.h>
+#include <vsg/utils/ShaderSet.h>
+#include <vsg/vk/Context.h>
 
 using namespace vsg;
 
-// thread safe container for managing the deviceID for each vsg;:View
+// thread safe container for managing the deviceID for each vsg::View
 static std::mutex s_ViewCountMutex;
-static std::vector<bool> s_ActiveViews;
+static std::vector<uint32_t> s_ActiveViews;
 
 static uint32_t getUniqueViewID()
 {
@@ -27,14 +30,30 @@ static uint32_t getUniqueViewID()
     uint32_t viewID = 0;
     for (viewID = 0; viewID < static_cast<uint32_t>(s_ActiveViews.size()); ++viewID)
     {
-        if (!s_ActiveViews[viewID])
+        if (s_ActiveViews[viewID] == 0)
         {
-            s_ActiveViews[viewID] = true;
+            ++s_ActiveViews[viewID];
             return viewID;
         }
     }
 
-    s_ActiveViews.push_back(true);
+    s_ActiveViews.push_back(1);
+
+    return viewID;
+}
+
+static uint32_t sharedViewID(uint32_t viewID)
+{
+    std::scoped_lock<std::mutex> guard(s_ViewCountMutex);
+
+    if (viewID < static_cast<uint32_t>(s_ActiveViews.size()))
+    {
+        ++s_ActiveViews[viewID];
+        return viewID;
+    }
+
+    viewID = static_cast<uint32_t>(s_ActiveViews.size());
+    s_ActiveViews.push_back(1);
 
     return viewID;
 }
@@ -42,28 +61,67 @@ static uint32_t getUniqueViewID()
 static void releaseViewID(uint32_t viewID)
 {
     std::scoped_lock<std::mutex> guard(s_ViewCountMutex);
-    s_ActiveViews[viewID] = false;
+    --s_ActiveViews[viewID];
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // View
 //
-View::View() :
+View::View(ViewFeatures in_features) :
     viewID(getUniqueViewID()),
-    viewDependentState(ViewDependentState::create())
+    features(in_features)
 {
+    viewDependentState = ViewDependentState::create(this);
 }
 
-View::View(ref_ptr<Camera> in_camera, ref_ptr<Node> in_scenegraph) :
+View::View(const View& view) :
+    Inherit(view),
+    viewID(sharedViewID(view.viewID)),
+    features(view.features),
+    mask(view.mask)
+{
+    if (view.camera && view.camera->viewportState)
+    {
+        camera = vsg::Camera::create();
+        camera->viewportState = view.camera->viewportState;
+    }
+
+    viewDependentState = ViewDependentState::create(this);
+
+    // info("View::View(const View&) ", this, ", ", viewDependentState, ", ", viewID);
+}
+
+View::View(ref_ptr<Camera> in_camera, ref_ptr<Node> in_scenegraph, ViewFeatures in_features) :
     camera(in_camera),
     viewID(getUniqueViewID()),
-    viewDependentState(ViewDependentState::create())
+    features(in_features)
 {
     if (in_scenegraph) addChild(in_scenegraph);
+
+    viewDependentState = ViewDependentState::create(this);
+
+    // info("View::View(ref_ptr<Camera> in_camera) ", this, ", ", viewDependentState, ", ", viewID);
 }
 
 View::~View()
 {
+    if (viewDependentState) viewDependentState->view = nullptr;
     releaseViewID(viewID);
+}
+
+void View::share(const View& view)
+{
+    if (viewID != view.viewID)
+    {
+        releaseViewID(viewID);
+        const_cast<uint32_t&>(viewID) = sharedViewID(view.viewID);
+    }
+
+    mask = view.mask;
+    if (view.camera && view.camera->viewportState)
+    {
+        if (!camera) camera = vsg::Camera::create();
+        camera->viewportState = view.camera->viewportState;
+    }
 }

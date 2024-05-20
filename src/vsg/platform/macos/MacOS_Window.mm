@@ -19,14 +19,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/ui/PointerEvent.h>
 #include <vsg/ui/TouchEvent.h>
 #include <vsg/ui/ScrollWheelEvent.h>
-#include <vsg/vk/Extensions.h>
 
 #include <time.h>
 
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/CAMetalLayer.h>
 
-// this a carbon header, we should try to avoid
+// this is a carbon header, we should try to avoid it
 #import <Carbon/Carbon.h>
 
 using namespace vsg;
@@ -133,16 +132,16 @@ namespace vsg
 - (void) handleFrameSizeChange
 {
     vsg::clock::time_point event_time = vsg::clock::now();
-    
+
     const NSRect contentRect = [window-> view() frame];
 
     auto devicePixelScale = _traits->hdpi ? [window->window() backingScaleFactor] : 1.0f;
 
     uint32_t width = contentRect.size.width * devicePixelScale;
     uint32_t height = contentRect.size.height * devicePixelScale;
-    
+
     //vsg:debug("handleFrameSizeChange: ", width, ", ", height);
-    
+
     window->queueEvent(vsg::ConfigureWindowEvent::create(window, event_time, contentRect.origin.x, contentRect.origin.y, width, height));
 }
 
@@ -456,7 +455,7 @@ namespace vsgMacOS
 
 KeyboardMap::KeyboardMap()
 {
-    // An explanation of mapping from uppercase to lowercase
+    // An explanation of mapping from uppercase to lowercase:
     // The map _vk2vsg represents mapping from MacOS produced keycode
     // of the key that was physically pressed to the vsg character
     // that is produced when the key is pressed and no modifiers are active.
@@ -588,9 +587,9 @@ void KeyboardMap::getModifierKeyChanges(NSEvent* anEvent, ModifierKeyChanges& ch
     _lastFlags = modifierFlags; // this must come after the xor.
 
     // The below code could likely be accomplished with just bit masks but the if statements are clearer.
-    // Work out any mod keys such as ctrl, alt, shift etc. are pressed
+    // Work out if any mod keys such as ctrl, alt, shift etc. are pressed
     // There must be a way to differentiate between left and right modifier keys on Mac
-    // But for now I do not know how do do so. Hence for all modifier keys the "left" key is chosen.
+    // But for now I do not know how to do so. Hence for all modifier keys the "left" key is chosen.
     if (changedFlags & NSEventModifierFlagOption)
     {
         if (modifierFlags & NSEventModifierFlagOption)
@@ -680,7 +679,7 @@ bool KeyboardMap::getKeySymbol(NSEvent* anEvent, vsg::KeySymbol& keySymbol, vsg:
     keySymbol = itr->second;
     modifiedKeySymbol = keySymbol;
 
-    // Work out any mod keys such as ctrl, alt, shift etc. are pressed
+    // Work out if any mod keys such as ctrl, alt, shift etc. are pressed
     uint16_t modifierMask = 0;
     if (modifierFlags & NSEventModifierFlagOption) modifierMask |= vsg::KeyModifier::MODKEY_Alt;
     if (modifierFlags & NSEventModifierFlagControl) modifierMask |= vsg::KeyModifier::MODKEY_Control;
@@ -754,7 +753,7 @@ MacOS_Window::MacOS_Window(vsg::ref_ptr<vsg::WindowTraits> traits) :
     [_window setOpaque:YES];
     [_window setBackgroundColor:[NSColor whiteColor]];
 
-    
+
     // create view
     _view = [[vsg_MacOS_NSView alloc] initWithVsgWindow:this];
     // [_view setWantsBestResolutionOpenGLSurface:_traits->hdpi];
@@ -776,14 +775,13 @@ MacOS_Window::MacOS_Window(vsg::ref_ptr<vsg::WindowTraits> traits) :
     auto devicePixelScale = _traits->hdpi ? [_window backingScaleFactor] : 1.0f;
     [_metalLayer setContentsScale:devicePixelScale];
 
-    // we could get the width height from the window?
+    // we could get the width and height from the window?
     uint32_t finalwidth = traits->width * devicePixelScale;
     uint32_t finalheight = traits->height * devicePixelScale;
 
-    if (traits->shareWindow)
+    if (traits->device)
     {
-        // share the _instance, _physicalDevice and _device;
-        share(*traits->shareWindow);
+        share(traits->device);
     }
 
     _extent2D.width = finalwidth;
@@ -921,7 +919,7 @@ bool MacOS_Window::handleNSEvent(NSEvent* anEvent)
         // keyboard events
         case NSEventTypeFlagsChanged:
         {
-            // This event type is triggered when ever a ctrl, alt etc keys are pressed.
+            // This event type is triggered whenever ctrl, alt etc keys are pressed.
             // Not sure why this is not just a KeyUp or KeyDown event.
             // both the modified and unmodified symbols for ctrl, alt, option, etc are the same
             // no modifiers for the modifiers themselves.

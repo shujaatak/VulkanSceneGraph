@@ -16,6 +16,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/Version.h>
 #include <vsg/io/Logger.h>
 #include <vsg/io/Options.h>
+#include <vsg/maths/color.h>
+#include <vsg/maths/vec4.h>
 #include <vsg/ui/ApplicationEvent.h>
 #include <vsg/vk/SubmitCommands.h>
 
@@ -34,9 +36,14 @@ ref_ptr<Window> Window::create(vsg::ref_ptr<WindowTraits>)
 Window::Window(ref_ptr<WindowTraits> traits) :
     _traits(traits),
     _extent2D{std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()},
-    _clearColor{{0.2f, 0.2f, 0.4f, 1.0f}},
+    _clearColor{0.2f, 0.2f, 0.4f, 1.0f},
     _framebufferSamples(VK_SAMPLE_COUNT_1_BIT)
 {
+    if (_traits && (_traits->swapchainPreferences.surfaceFormat.format == VK_FORMAT_B8G8R8A8_SRGB || _traits->swapchainPreferences.surfaceFormat.format == VK_FORMAT_B8G8R8_SRGB))
+    {
+        _clearColor = linear_to_sRGB(_clearColor);
+        info("Selected sRGB window ", _clearColor);
+    }
 }
 
 Window::~Window()
@@ -57,15 +64,12 @@ void Window::clear()
     _physicalDevice.reset();
 }
 
-void Window::share(Window& window)
+void Window::share(ref_ptr<Device> device)
 {
-    _instance = window.getOrCreateInstance();
-    _physicalDevice = window.getOrCreatePhysicalDevice();
-    _device = window.getOrCreateDevice();
-    _renderPass = window.getOrCreateRenderPass();
-
+    setDevice(device);
     _initSurface();
     _initFormats();
+    _initRenderPass();
 }
 
 VkSurfaceFormatKHR Window::surfaceFormat()
@@ -119,7 +123,7 @@ void Window::setDevice(ref_ptr<Device> device)
     if (_device)
     {
         _physicalDevice = _device->getPhysicalDevice();
-        _initFormats();
+        _instance = _device->getInstance();
     }
 }
 
@@ -265,7 +269,7 @@ void Window::buildSwapchain()
 {
     if (_swapchain)
     {
-        // make sure all operations on the device have stopped before we go deleting associated resources
+        // make sure all operations on the device have stopped before we go on deleting associated resources
         vkDeviceWaitIdle(*_device);
 
         // clean up previous swap chain before we begin creating a new one.
@@ -279,7 +283,7 @@ void Window::buildSwapchain()
         _multisampleImageView.reset();
     }
 
-    // is width and height even required here as the surface appear to control it.
+    // is width and height even required here as the surface appears to control it?
     _swapchain = Swapchain::create(_physicalDevice, _device, _surface, _extent2D.width, _extent2D.height, _traits->swapchainPreferences, _swapchain);
 
     // pass back the extents used by the swap chain.
@@ -433,7 +437,7 @@ VkResult Window::acquireNextImage(uint64_t timeout)
 
     if (!_availableSemaphore) _availableSemaphore = vsg::Semaphore::create(_device, _traits->imageAvailableSemaphoreWaitFlag);
 
-    // check the dimensions of the swapchain and window extents are consistent, if nit return a VK_ERROR_OUT_OF_DATE_KHR;
+    // check the dimensions of the swapchain and window extents are consistent, if not return a VK_ERROR_OUT_OF_DATE_KHR
     if (_swapchain->getExtent() != _extent2D) return VK_ERROR_OUT_OF_DATE_KHR;
 
     uint32_t imageIndex;
@@ -441,7 +445,7 @@ VkResult Window::acquireNextImage(uint64_t timeout)
 
     if (result == VK_SUCCESS)
     {
-        // the acquired image's semaphore must be available now so make it the new _availableSemaphore and set it's entry to the one to use of the next frame by swapping ref_ptr<>'s
+        // the acquired image's semaphore must be available now so make it the new _availableSemaphore and set its entry to the one to use for the next frame by swapping ref_ptr<>'s
         _availableSemaphore.swap(_frames[imageIndex].imageAvailableSemaphore);
 
         // shift up previous frame indices

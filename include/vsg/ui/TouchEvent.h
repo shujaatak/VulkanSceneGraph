@@ -19,7 +19,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// TouchEvent is a base class touch events.
+    /// TouchEvent is a base class for touch events.
     class VSG_DECLSPEC TouchEvent : public Inherit<WindowEvent, TouchEvent>
     {
     public:
@@ -31,9 +31,9 @@ namespace vsg
             y(in_y),
             id(in_id) {}
 
-        uint32_t x;
-        uint32_t y;
-        uint32_t id;
+        uint32_t x = 0;
+        uint32_t y = 0;
+        uint32_t id = 0;
 
         void read(Input& input) override;
         void write(Output& output) const override;

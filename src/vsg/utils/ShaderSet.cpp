@@ -10,6 +10,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/app/View.h>
 #include <vsg/io/Input.h>
 #include <vsg/io/Options.h>
 #include <vsg/io/Output.h>
@@ -18,11 +19,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/state/DescriptorImage.h>
 #include <vsg/state/InputAssemblyState.h>
 #include <vsg/state/MultisampleState.h>
+#include <vsg/state/PipelineLayout.h>
 #include <vsg/state/RasterizationState.h>
 #include <vsg/state/TessellationState.h>
 #include <vsg/state/VertexInputState.h>
+#include <vsg/state/ViewDependentState.h>
 #include <vsg/state/material.h>
 #include <vsg/utils/ShaderSet.h>
+#include <vsg/vk/Context.h>
 
 #include "shaders/flat_ShaderSet.cpp"
 #include "shaders/pbr_ShaderSet.cpp"
@@ -45,7 +49,7 @@ int AttributeBinding::compare(const AttributeBinding& rhs) const
     return compare_pointer(data, rhs.data);
 }
 
-int UniformBinding::compare(const UniformBinding& rhs) const
+int DescriptorBinding::compare(const DescriptorBinding& rhs) const
 {
     if (name < rhs.name) return -1;
     if (name > rhs.name) return 1;
@@ -82,6 +86,82 @@ int DefinesArrayState::compare(const DefinesArrayState& rhs) const
     return compare_pointer(arrayState, rhs.arrayState);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// CustomDescriptorSetBinding
+//
+CustomDescriptorSetBinding::CustomDescriptorSetBinding(uint32_t in_set) :
+    set(in_set)
+{
+}
+
+int CustomDescriptorSetBinding::compare(const Object& rhs_object) const
+{
+    int result = Object::compare(rhs_object);
+    if (result != 0) return result;
+
+    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+    return compare_value(set, rhs.set);
+}
+
+void CustomDescriptorSetBinding::read(Input& input)
+{
+    Object::read(input);
+
+    input.read("set", set);
+}
+
+void CustomDescriptorSetBinding::write(Output& output) const
+{
+    Object::write(output);
+
+    output.write("set", set);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// ViewDependentStateBinding
+//
+ViewDependentStateBinding::ViewDependentStateBinding(uint32_t in_set) :
+    Inherit(in_set),
+    viewDescriptorSetLayout(ViewDescriptorSetLayout::create())
+{
+}
+
+int ViewDependentStateBinding::compare(const Object& rhs) const
+{
+    return CustomDescriptorSetBinding::compare(rhs);
+}
+
+void ViewDependentStateBinding::read(Input& input)
+{
+    CustomDescriptorSetBinding::read(input);
+}
+
+void ViewDependentStateBinding::write(Output& output) const
+{
+    CustomDescriptorSetBinding::write(output);
+}
+
+bool ViewDependentStateBinding::compatibleDescriptorSetLayout(const DescriptorSetLayout& dsl) const
+{
+    return viewDescriptorSetLayout->compare(dsl) == 0;
+}
+
+ref_ptr<DescriptorSetLayout> ViewDependentStateBinding::createDescriptorSetLayout()
+{
+    return viewDescriptorSetLayout;
+}
+
+ref_ptr<StateCommand> ViewDependentStateBinding::createStateCommand(ref_ptr<PipelineLayout> layout)
+{
+    return BindViewDescriptorSets::create(VK_PIPELINE_BIND_POINT_GRAPHICS, layout, set);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// ShaderSet
+//
 ShaderSet::ShaderSet()
 {
 }
@@ -96,17 +176,17 @@ ShaderSet::~ShaderSet()
 {
 }
 
-void ShaderSet::addAttributeBinding(std::string name, std::string define, uint32_t location, VkFormat format, ref_ptr<Data> data)
+void ShaderSet::addAttributeBinding(const std::string& name, const std::string& define, uint32_t location, VkFormat format, ref_ptr<Data> data)
 {
     attributeBindings.push_back(AttributeBinding{name, define, location, format, data});
 }
 
-void ShaderSet::addUniformBinding(std::string name, std::string define, uint32_t set, uint32_t binding, VkDescriptorType descriptorType, uint32_t descriptorCount, VkShaderStageFlags stageFlags, ref_ptr<Data> data)
+void ShaderSet::addDescriptorBinding(const std::string& name, const std::string& define, uint32_t set, uint32_t binding, VkDescriptorType descriptorType, uint32_t descriptorCount, VkShaderStageFlags stageFlags, ref_ptr<Data> data)
 {
-    uniformBindings.push_back(UniformBinding{name, define, set, binding, descriptorType, descriptorCount, stageFlags, data});
+    descriptorBindings.push_back(DescriptorBinding{name, define, set, binding, descriptorType, descriptorCount, stageFlags, data});
 }
 
-void ShaderSet::addPushConstantRange(std::string name, std::string define, VkShaderStageFlags stageFlags, uint32_t offset, uint32_t size)
+void ShaderSet::addPushConstantRange(const std::string& name, const std::string& define, VkShaderStageFlags stageFlags, uint32_t offset, uint32_t size)
 {
     pushConstantRanges.push_back(vsg::PushConstantRange{name, define, VkPushConstantRange{stageFlags, offset, size}});
 }
@@ -120,13 +200,13 @@ const AttributeBinding& ShaderSet::getAttributeBinding(const std::string& name) 
     return _nullAttributeBinding;
 }
 
-UniformBinding& ShaderSet::getUniformBinding(const std::string& name)
+DescriptorBinding& ShaderSet::getDescriptorBinding(const std::string& name)
 {
-    for (auto& binding : uniformBindings)
+    for (auto& binding : descriptorBindings)
     {
         if (binding.name == name) return binding;
     }
-    return _nullUniformBinding;
+    return _nullDescriptorBinding;
 }
 
 AttributeBinding& ShaderSet::getAttributeBinding(const std::string& name)
@@ -138,20 +218,20 @@ AttributeBinding& ShaderSet::getAttributeBinding(const std::string& name)
     return _nullAttributeBinding;
 }
 
-const UniformBinding& ShaderSet::getUniformBinding(const std::string& name) const
+const DescriptorBinding& ShaderSet::getDescriptorBinding(const std::string& name) const
 {
-    for (auto& binding : uniformBindings)
+    for (auto& binding : descriptorBindings)
     {
         if (binding.name == name) return binding;
     }
-    return _nullUniformBinding;
+    return _nullDescriptorBinding;
 }
 
 ref_ptr<ArrayState> ShaderSet::getSuitableArrayState(const std::set<std::string>& defines) const
 {
     // not all defines are relevant to the provided ArrayState
     // so check each one against the entries in the definesArrayState
-    // are relevant to the final matching.
+    // relevant to the final matching.
     std::set<std::string> relevant_defines;
     for (auto& define : defines)
     {
@@ -216,7 +296,7 @@ int ShaderSet::compare(const Object& rhs_object) const
     auto& rhs = static_cast<decltype(*this)>(rhs_object);
     if ((result = compare_pointer_container(stages, rhs.stages))) return result;
     if ((result = compare_container(attributeBindings, rhs.attributeBindings))) return result;
-    if ((result = compare_container(uniformBindings, rhs.uniformBindings))) return result;
+    if ((result = compare_container(descriptorBindings, rhs.descriptorBindings))) return result;
     if ((result = compare_container(pushConstantRanges, rhs.pushConstantRanges))) return result;
     if ((result = compare_container(definesArrayStates, rhs.definesArrayStates))) return result;
     if ((result = compare_container(optionalDefines, rhs.optionalDefines))) return result;
@@ -245,9 +325,9 @@ void ShaderSet::read(Input& input)
         input.readObject("data", binding.data);
     }
 
-    auto num_uniformBindings = input.readValue<uint32_t>("uniformBindings");
-    uniformBindings.resize(num_uniformBindings);
-    for (auto& binding : uniformBindings)
+    auto num_descriptorBindings = input.readValue<uint32_t>(input.version_greater_equal(1, 0, 10) ? "descriptorBindings" : "uniformBindings");
+    descriptorBindings.resize(num_descriptorBindings);
+    for (auto& binding : descriptorBindings)
     {
         input.read("name", binding.name);
         input.read("define", binding.define);
@@ -288,6 +368,19 @@ void ShaderSet::read(Input& input)
         auto hints = input.readObject<ShaderCompileSettings>("hints");
         input.readObjects("stages", variants[hints]);
     }
+
+    if (input.version_greater_equal(1, 0, 8))
+    {
+        auto num_custom = input.readValue<uint32_t>("customDescriptorSetBindings");
+        customDescriptorSetBindings.clear();
+        for (uint32_t i = 0; i < num_custom; ++i)
+        {
+            if (auto custom = input.readObject<CustomDescriptorSetBinding>("customDescriptorSetBinding"))
+            {
+                customDescriptorSetBindings.push_back(custom);
+            }
+        }
+    }
 }
 
 void ShaderSet::write(Output& output) const
@@ -311,8 +404,8 @@ void ShaderSet::write(Output& output) const
         output.writeObject("data", binding.data);
     }
 
-    output.writeValue<uint32_t>("uniformBindings", uniformBindings.size());
-    for (auto& binding : uniformBindings)
+    output.writeValue<uint32_t>(output.version_greater_equal(1, 0, 10) ? "descriptorBindings" : "uniformBindings", descriptorBindings.size());
+    for (auto& binding : descriptorBindings)
     {
         output.write("name", binding.name);
         output.write("define", binding.define);
@@ -350,6 +443,15 @@ void ShaderSet::write(Output& output) const
         output.writeObject("hints", hints);
         output.writeObjects("stages", variant_stages);
     }
+
+    if (output.version_greater_equal(1, 0, 8))
+    {
+        output.writeValue<uint32_t>("customDescriptorSetBindings", customDescriptorSetBindings.size());
+        for (auto& custom : customDescriptorSetBindings)
+        {
+            output.writeObject("customDescriptorSetBinding", custom);
+        }
+    }
 }
 
 ref_ptr<ShaderSet> vsg::createFlatShadedShaderSet(ref_ptr<const Options> options)
@@ -382,4 +484,117 @@ ref_ptr<ShaderSet> vsg::createPhysicsBasedRenderingShaderSet(ref_ptr<const Optio
     }
 
     return pbr_ShaderSet();
+}
+
+std::pair<uint32_t, uint32_t> ShaderSet::descriptorSetRange() const
+{
+    if (descriptorBindings.empty()) return {0, 0};
+
+    uint32_t minimum = std::numeric_limits<uint32_t>::max();
+    uint32_t maximum = std::numeric_limits<uint32_t>::min();
+
+    for (auto& binding : descriptorBindings)
+    {
+        if (binding.set < minimum) minimum = binding.set;
+        if (binding.set > maximum) maximum = binding.set;
+    }
+
+    return {minimum, maximum + 1};
+}
+
+bool ShaderSet::compatibleDescriptorSetLayout(const DescriptorSetLayout& dsl, const std::set<std::string>& defines, uint32_t set) const
+{
+    for (auto& cdsb : customDescriptorSetBindings)
+    {
+        if (cdsb->set == set && cdsb->compatibleDescriptorSetLayout(dsl)) return true;
+    }
+
+    DescriptorSetLayoutBindings bindings;
+    for (auto& binding : descriptorBindings)
+    {
+        if (binding.set == set)
+        {
+            if (binding.define.empty() || defines.count(binding.define) > 0)
+            {
+                bindings.push_back(VkDescriptorSetLayoutBinding{binding.binding, binding.descriptorType, binding.descriptorCount, binding.stageFlags, nullptr});
+            }
+        }
+    }
+
+    return compare_value_container(dsl.bindings, bindings) == 0;
+}
+
+ref_ptr<DescriptorSetLayout> ShaderSet::createDescriptorSetLayout(const std::set<std::string>& defines, uint32_t set) const
+{
+    for (auto& cdsb : customDescriptorSetBindings)
+    {
+        if (cdsb->set == set) return cdsb->createDescriptorSetLayout();
+    }
+
+    DescriptorSetLayoutBindings bindings;
+    for (auto& binding : descriptorBindings)
+    {
+        if (binding.set == set)
+        {
+            if (binding.define.empty() || defines.count(binding.define) > 0)
+            {
+                bindings.push_back(VkDescriptorSetLayoutBinding{binding.binding, binding.descriptorType, binding.descriptorCount, binding.stageFlags, nullptr});
+            }
+        }
+    }
+
+    return DescriptorSetLayout::create(bindings);
+}
+
+bool ShaderSet::compatiblePipelineLayout(const PipelineLayout& layout, const std::set<std::string>& defines) const
+{
+    uint32_t set = 0;
+    for (auto& descriptorSetLayout : layout.setLayouts)
+    {
+        if (descriptorSetLayout && !compatibleDescriptorSetLayout(*descriptorSetLayout, defines, set))
+        {
+            return false;
+        }
+        ++set;
+    }
+
+    PushConstantRanges ranges;
+    for (auto& pcr : pushConstantRanges)
+    {
+        if (pcr.define.empty() || defines.count(pcr.define) == 1)
+        {
+            ranges.push_back(pcr.range);
+        }
+    }
+
+    if (compare_value_container(layout.pushConstantRanges, ranges) != 0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+ref_ptr<PipelineLayout> ShaderSet::createPipelineLayout(const std::set<std::string>& defines, std::pair<uint32_t, uint32_t> range) const
+{
+    DescriptorSetLayouts descriptorSetLayouts;
+
+    uint32_t set = 0;
+    for (; set < range.first; ++set)
+    {
+        descriptorSetLayouts.push_back(DescriptorSetLayout::create());
+    }
+
+    for (; set < range.second; ++set)
+    {
+        descriptorSetLayouts.push_back(createDescriptorSetLayout(defines, set));
+    }
+
+    PushConstantRanges activePushConstantRanges;
+    for (auto& pcb : pushConstantRanges)
+    {
+        if (pcb.define.empty() || defines.count(pcb.define) != 0) activePushConstantRanges.push_back(pcb.range);
+    }
+
+    return vsg::PipelineLayout::create(descriptorSetLayouts, activePushConstantRanges);
 }

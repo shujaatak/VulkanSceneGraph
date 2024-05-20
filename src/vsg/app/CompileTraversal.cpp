@@ -14,6 +14,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <vsg/app/CommandGraph.h>
 #include <vsg/app/RenderGraph.h>
+#include <vsg/app/SecondaryCommandGraph.h>
 #include <vsg/app/View.h>
 #include <vsg/app/Viewer.h>
 #include <vsg/commands/Command.h>
@@ -22,6 +23,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/nodes/Group.h>
 #include <vsg/nodes/StateGroup.h>
 #include <vsg/state/MultisampleState.h>
+#include <vsg/state/ViewDependentState.h>
+#include <vsg/utils/ShaderSet.h>
 #include <vsg/vk/RenderPass.h>
 #include <vsg/vk/State.h>
 
@@ -62,6 +65,7 @@ void CompileTraversal::add(ref_ptr<Device> device, const ResourceRequirements& r
 {
     auto queueFamily = device->getPhysicalDevice()->getQueueFamily(queueFlags);
     auto context = Context::create(device, resourceRequirements);
+    context->instrumentation = instrumentation;
     context->commandPool = CommandPool::create(device, queueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     context->graphicsQueue = device->getQueue(queueFamily, queueFamilyIndex);
     contexts.push_back(context);
@@ -73,6 +77,7 @@ void CompileTraversal::add(Window& window, ref_ptr<ViewportState> viewport, cons
     auto renderPass = window.getOrCreateRenderPass();
     auto queueFamily = device->getPhysicalDevice()->getQueueFamily(queueFlags);
     auto context = Context::create(device, resourceRequirements);
+    context->instrumentation = instrumentation;
     context->renderPass = renderPass;
     context->commandPool = CommandPool::create(device, queueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     context->graphicsQueue = device->getQueue(queueFamily, queueFamilyIndex);
@@ -93,6 +98,7 @@ void CompileTraversal::add(Window& window, ref_ptr<View> view, const ResourceReq
     auto renderPass = window.getOrCreateRenderPass();
     auto queueFamily = device->getPhysicalDevice()->getQueueFamily(queueFlags);
     auto context = Context::create(device, resourceRequirements);
+    context->instrumentation = instrumentation;
     context->renderPass = renderPass;
     context->commandPool = vsg::CommandPool::create(device, queueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     context->graphicsQueue = device->getQueue(queueFamily, queueFamilyIndex);
@@ -111,6 +117,8 @@ void CompileTraversal::add(Window& window, ref_ptr<View> view, const ResourceReq
     context->viewDependentState = view->viewDependentState;
 
     contexts.push_back(context);
+
+    if (view->viewDependentState) addViewDependentState(*(view->viewDependentState), resourceRequirements);
 }
 
 void CompileTraversal::add(Framebuffer& framebuffer, ref_ptr<View> view, const ResourceRequirements& resourceRequirements)
@@ -119,6 +127,7 @@ void CompileTraversal::add(Framebuffer& framebuffer, ref_ptr<View> view, const R
     auto renderPass = framebuffer.getRenderPass();
     auto queueFamily = device->getPhysicalDevice()->getQueueFamily(VK_QUEUE_GRAPHICS_BIT);
     auto context = Context::create(device, resourceRequirements);
+    context->instrumentation = instrumentation;
     context->renderPass = renderPass;
     context->commandPool = vsg::CommandPool::create(device, queueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     context->graphicsQueue = device->getQueue(queueFamily, queueFamilyIndex);
@@ -137,10 +146,14 @@ void CompileTraversal::add(Framebuffer& framebuffer, ref_ptr<View> view, const R
     context->viewDependentState = view->viewDependentState;
 
     contexts.push_back(context);
+
+    if (view->viewDependentState) addViewDependentState(*(view->viewDependentState), resourceRequirements);
 }
 
 void CompileTraversal::add(const Viewer& viewer, const ResourceRequirements& resourceRequirements)
 {
+    if (viewer.instrumentation) instrumentation = viewer.instrumentation;
+
     struct AddViews : public Visitor
     {
         CompileTraversal* ct = nullptr;
@@ -178,6 +191,8 @@ void CompileTraversal::add(const Viewer& viewer, const ResourceRequirements& res
                     ct->add(*window, ref_ptr<View>(&view), resourceRequirements);
                 else if (auto framebuffer = obj.cast<Framebuffer>())
                     ct->add(*framebuffer, ref_ptr<View>(&view), resourceRequirements);
+
+                if (view.viewDependentState) ct->addViewDependentState(*view.viewDependentState, resourceRequirements);
             }
         }
     } addViews(this, resourceRequirements);
@@ -191,13 +206,36 @@ void CompileTraversal::add(const Viewer& viewer, const ResourceRequirements& res
     }
 }
 
+void CompileTraversal::addViewDependentState(ViewDependentState& viewDependentState, const ResourceRequirements& resourceRequirements)
+{
+    if (viewDependentState.shadowMaps.size() > 0)
+    {
+        auto nested_view = viewDependentState.shadowMaps.front().view;
+        auto nested_framebuffer = viewDependentState.shadowMaps.front().renderGraph->framebuffer;
+        add(*nested_framebuffer, nested_view, resourceRequirements);
+    }
+}
+
+void CompileTraversal::assignInstrumentation(ref_ptr<Instrumentation> in_instrumentation)
+{
+    instrumentation = in_instrumentation;
+    for (auto& context : contexts)
+    {
+        context->instrumentation = shareOrDuplicateForThreadSafety(instrumentation);
+    }
+}
+
 void CompileTraversal::apply(Object& object)
 {
+    CPU_INSTRUMENTATION_L2_NC(instrumentation, "CompileTraversal Object", COLOR_COMPILE);
+
     object.traverse(*this);
 }
 
 void CompileTraversal::apply(Compilable& node)
 {
+    CPU_INSTRUMENTATION_L3_NC(instrumentation, "CompileTraversal Compilable", COLOR_COMPILE);
+
     for (auto& context : contexts)
     {
         node.compile(*context);
@@ -206,23 +244,18 @@ void CompileTraversal::apply(Compilable& node)
 
 void CompileTraversal::apply(Commands& commands)
 {
+    CPU_INSTRUMENTATION_L3_NC(instrumentation, "CompileTraversal Commands", COLOR_COMPILE);
+
     for (auto& context : contexts)
     {
         commands.compile(*context);
     }
 }
 
-void CompileTraversal::apply(StateGroup& stateGroup)
-{
-    for (auto& context : contexts)
-    {
-        stateGroup.compile(*context);
-    }
-    stateGroup.traverse(*this);
-}
-
 void CompileTraversal::apply(Geometry& geometry)
 {
+    CPU_INSTRUMENTATION_L3_NC(instrumentation, "CompileTraversal Geometry", COLOR_COMPILE);
+
     for (auto& context : contexts)
     {
         geometry.compile(*context);
@@ -232,68 +265,86 @@ void CompileTraversal::apply(Geometry& geometry)
 
 void CompileTraversal::apply(CommandGraph& commandGraph)
 {
-    auto traverseRenderedSubgraph = [&](vsg::RenderPass* renderpass, VkExtent2D renderArea) {
-        auto samples = renderpass->maxSamples;
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "CompileTraversal CommandGraph", COLOR_COMPILE);
 
-        for (auto& context : contexts)
+    for (auto& context : contexts)
+    {
+        if (context->resourceRequirements.maxSlot > commandGraph.maxSlot)
         {
-            context->renderPass = renderpass;
-
-            // save previous states to be restored after traversal
-            auto previousDefaultPipelineStates = context->defaultPipelineStates;
-            auto previousOverridePipelineStates = context->overridePipelineStates;
-
-            mergeGraphicsPipelineStates(context->defaultPipelineStates, ViewportState::create(renderArea));
-
-            if (samples != VK_SAMPLE_COUNT_1_BIT)
-            {
-                mergeGraphicsPipelineStates(context->overridePipelineStates, MultisampleState::create(samples));
-            }
-
-            commandGraph.traverse(*this);
-
-            // restore previous values
-            context->defaultPipelineStates = previousDefaultPipelineStates;
-            context->overridePipelineStates = previousOverridePipelineStates;
+            commandGraph.maxSlot = context->resourceRequirements.maxSlot;
         }
-    };
+    }
 
-    if (commandGraph.framebuffer)
+    commandGraph.traverse(*this);
+}
+
+void CompileTraversal::apply(SecondaryCommandGraph& secondaryCommandGraph)
+{
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "CompileTraversal SecondaryCommandGraph", COLOR_COMPILE);
+
+    auto renderPass = secondaryCommandGraph.getRenderPass();
+
+    for (auto& context : contexts)
     {
-        traverseRenderedSubgraph(commandGraph.framebuffer->getRenderPass(), commandGraph.framebuffer->extent2D());
-    }
-    else if (commandGraph.window)
-    {
-        traverseRenderedSubgraph(commandGraph.window->getOrCreateRenderPass(), commandGraph.window->extent2D());
-    }
-    else
-    {
-        commandGraph.traverse(*this);
+        if (context->resourceRequirements.maxSlot > secondaryCommandGraph.maxSlot)
+        {
+            secondaryCommandGraph.maxSlot = context->resourceRequirements.maxSlot;
+        }
+
+        // save previous states to be restored after traversal
+        auto previousRenderPass = context->renderPass;
+        auto previousDefaultPipelineStates = context->defaultPipelineStates;
+        auto previousOverridePipelineStates = context->overridePipelineStates;
+
+        context->renderPass = renderPass;
+
+        if (secondaryCommandGraph.window)
+        {
+            mergeGraphicsPipelineStates(context->mask, context->defaultPipelineStates, ViewportState::create(secondaryCommandGraph.window->extent2D()));
+        }
+        else if (secondaryCommandGraph.framebuffer)
+        {
+            mergeGraphicsPipelineStates(context->mask, context->defaultPipelineStates, ViewportState::create(secondaryCommandGraph.framebuffer->extent2D()));
+        }
+
+        if (renderPass)
+        {
+            mergeGraphicsPipelineStates(context->mask, context->overridePipelineStates, MultisampleState::create(context->renderPass->maxSamples));
+        }
+
+        secondaryCommandGraph.traverse(*this);
+
+        // restore previous values
+        context->defaultPipelineStates = previousDefaultPipelineStates;
+        context->overridePipelineStates = previousOverridePipelineStates;
+        context->renderPass = previousRenderPass;
     }
 }
 
 void CompileTraversal::apply(RenderGraph& renderGraph)
 {
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "CompileTraversal RenderGraph", COLOR_COMPILE);
+
     for (auto& context : contexts)
     {
-        context->renderPass = renderGraph.getRenderPass();
-
         // save previous states to be restored after traversal
+        auto previousRenderPass = context->renderPass;
         auto previousDefaultPipelineStates = context->defaultPipelineStates;
         auto previousOverridePipelineStates = context->overridePipelineStates;
 
+        context->renderPass = renderGraph.getRenderPass();
         if (renderGraph.window)
         {
-            mergeGraphicsPipelineStates(context->defaultPipelineStates, ViewportState::create(renderGraph.window->extent2D()));
+            mergeGraphicsPipelineStates(context->mask, context->defaultPipelineStates, ViewportState::create(renderGraph.window->extent2D()));
         }
         else if (renderGraph.framebuffer)
         {
-            mergeGraphicsPipelineStates(context->defaultPipelineStates, ViewportState::create(renderGraph.framebuffer->extent2D()));
+            mergeGraphicsPipelineStates(context->mask, context->defaultPipelineStates, ViewportState::create(renderGraph.framebuffer->extent2D()));
         }
 
-        if (context->renderPass && context->renderPass->maxSamples != VK_SAMPLE_COUNT_1_BIT)
+        if (context->renderPass)
         {
-            mergeGraphicsPipelineStates(context->overridePipelineStates, MultisampleState::create(context->renderPass->maxSamples));
+            mergeGraphicsPipelineStates(context->mask, context->overridePipelineStates, MultisampleState::create(context->renderPass->maxSamples));
         }
 
         renderGraph.traverse(*this);
@@ -301,39 +352,55 @@ void CompileTraversal::apply(RenderGraph& renderGraph)
         // restore previous values
         context->defaultPipelineStates = previousDefaultPipelineStates;
         context->overridePipelineStates = previousOverridePipelineStates;
+        context->renderPass = previousRenderPass;
     }
 }
 
 void CompileTraversal::apply(View& view)
 {
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "CompileTraversal View", COLOR_COMPILE);
+
     for (auto& context : contexts)
     {
-        // if context is associated with a view make sure we only apply it if it matches with view, oherwsie we skip this context
+        // if context is associated with a view make sure we only apply it if it matches with view, otherwise we skip this context
         auto context_view = context->view.ref_ptr();
         if (context_view && context_view.get() != &view) continue;
 
-        context->viewID = view.viewID;
-        context->viewDependentState = view.viewDependentState.get();
-        if (view.viewDependentState) view.viewDependentState->compile(*context);
+        // save previous states
+        auto previous_viewID = context->viewID;
+        auto previous_mask = context->mask;
+        auto previous_overridePipelineStates = context->overridePipelineStates;
+        auto previous_defaultPipelineStates = context->defaultPipelineStates;
 
-        // save previous pipeline states
-        auto previousOverridePipelineStates = context->overridePipelineStates;
-        auto previousDefaultPipelineStates = context->defaultPipelineStates;
+        context->viewID = view.viewID;
+        context->mask = view.mask;
+        context->viewDependentState = view.viewDependentState.get();
+
+        if (view.viewDependentState)
+        {
+            view.viewDependentState->compile(*context);
+        }
 
         // assign view specific pipeline states
-        if (view.camera && view.camera->viewportState) mergeGraphicsPipelineStates(context->defaultPipelineStates, view.camera->viewportState);
-        mergeGraphicsPipelineStates(context->overridePipelineStates, view.overridePipelineStates);
+        if (view.camera && view.camera->viewportState) mergeGraphicsPipelineStates(context->mask, context->defaultPipelineStates, view.camera->viewportState);
+        mergeGraphicsPipelineStates(context->mask, context->overridePipelineStates, view.overridePipelineStates);
 
         view.traverse(*this);
 
-        // restore previous pipeline states
-        context->defaultPipelineStates = previousDefaultPipelineStates;
-        context->overridePipelineStates = previousOverridePipelineStates;
+        // restore previous states
+        context->viewID = previous_viewID;
+        context->mask = previous_mask;
+        context->defaultPipelineStates = previous_defaultPipelineStates;
+        context->overridePipelineStates = previous_overridePipelineStates;
     }
+
+    if (view.viewDependentState) view.viewDependentState->accept(*this);
 }
 
 bool CompileTraversal::record()
 {
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "CompileTraversal record", COLOR_COMPILE);
+
     bool recorded = false;
     for (auto& context : contexts)
     {
@@ -344,6 +411,8 @@ bool CompileTraversal::record()
 
 void CompileTraversal::waitForCompletion()
 {
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "CompileTraversal waitForCompletion", COLOR_COMPILE);
+
     for (auto& context : contexts)
     {
         context->waitForCompletion();

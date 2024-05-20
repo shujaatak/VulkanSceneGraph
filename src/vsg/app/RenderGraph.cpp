@@ -14,6 +14,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/app/View.h>
 #include <vsg/io/Logger.h>
 #include <vsg/io/Options.h>
+#include <vsg/lighting/Light.h>
 #include <vsg/nodes/Bin.h>
 #include <vsg/state/MultisampleState.h>
 #include <vsg/vk/Context.h>
@@ -101,6 +102,8 @@ VkExtent2D RenderGraph::getExtent() const
 
 void RenderGraph::accept(RecordTraversal& recordTraversal) const
 {
+    GPU_INSTRUMENTATION_L1_NC(recordTraversal.instrumentation, *recordTraversal.getCommandBuffer(), "RenderGraph", COLOR_RECORD_L1);
+
     auto extent = getExtent();
     if (previous_extent.width == invalid_dimension || previous_extent.height == invalid_dimension || !windowResizeHandler)
     {
@@ -142,7 +145,7 @@ void RenderGraph::accept(RecordTraversal& recordTraversal) const
     VkCommandBuffer vk_commandBuffer = *(recordTraversal.getState()->_commandBuffer);
     vkCmdBeginRenderPass(vk_commandBuffer, &renderPassInfo, contents);
 
-    // traverse the command buffer to place the commands into the command buffer.
+    // traverse the subgraph to place commands into the command buffer.
     traverse(recordTraversal);
 
     vkCmdEndRenderPass(vk_commandBuffer);

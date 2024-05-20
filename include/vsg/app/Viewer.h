@@ -12,6 +12,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/animation/AnimationManager.h>
 #include <vsg/app/CompileManager.h>
 #include <vsg/app/Presentation.h>
 #include <vsg/app/RecordAndSubmitTask.h>
@@ -19,6 +20,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/app/Window.h>
 #include <vsg/threading/Barrier.h>
 #include <vsg/threading/FrameBlock.h>
+#include <vsg/utils/Instrumentation.h>
 
 #include <map>
 
@@ -37,6 +39,9 @@ namespace vsg
 
         /// add Window to Viewer
         virtual void addWindow(ref_ptr<Window> window);
+
+        /// remove Window from Viewer
+        virtual void removeWindow(ref_ptr<Window> window);
 
         Windows& windows() { return _windows; }
         const Windows& windows() const { return _windows; }
@@ -65,9 +70,9 @@ namespace vsg
         /// add event handler
         void addEventHandler(ref_ptr<Visitor> eventHandler) { _eventHandlers.emplace_back(eventHandler); }
 
-        void addEventHandlers(EventHandlers&& eventHandlers) { _eventHandlers.splice(_eventHandlers.end(), eventHandlers); }
+        void addEventHandlers(const EventHandlers& eventHandlers) { _eventHandlers.insert(_eventHandlers.end(), eventHandlers.begin(), eventHandlers.end()); }
 
-        /// get the const list of EventHandlers
+        /// get the list of EventHandlers
         EventHandlers& getEventHandlers() { return _eventHandlers; }
 
         /// get the const list of EventHandlers
@@ -82,15 +87,21 @@ namespace vsg
             updateOperations->add(op, runBehavior);
         }
 
-        /// compile manager provides thread safe support for compiling subgraph
+        /// manager for starting and running animations
+        ref_ptr<AnimationManager> animationManager;
+
+        /// compile manager provides thread safe support for compiling subgraphs
         ref_ptr<CompileManager> compileManager;
 
-        /// convenience method for advancing to the next frame.
-        /// Check active status, return false if viewer no longer active.
-        /// lf still active poll for pending events and place them in the Events list and advance to the next frame, update generate FrameStamp to signify the advancement to a new frame and return true.
-        virtual bool advanceToNextFrame();
+        /// hint for setting the FrameStamp::simulationTime to time since start_point()
+        static constexpr double UseTimeSinceStartPoint = std::numeric_limits<double>::max();
 
-        /// pass the Events into the any register EventHandlers
+        /// Convenience method for advancing to the next frame.
+        /// Check active status, return false if viewer no longer active.
+        /// If still active, poll for pending events and place them in the Events list and advance to the next frame, generate updated FrameStamp to signify the advancement to a new frame and return true.
+        virtual bool advanceToNextFrame(double simulationTime = UseTimeSinceStartPoint);
+
+        /// pass the Events into any registered EventHandlers
         virtual void handleEvents();
 
         virtual void compile(ref_ptr<ResourceHints> hints = {});
@@ -101,15 +112,19 @@ namespace vsg
         /// timeout is in nanoseconds.
         virtual VkResult waitForFences(size_t relativeFrameIndex, uint64_t timeout);
 
-        // Manage the work to do each frame using RecordAndSubmitTasks. those that need to present results to be wired up to respective Presentation object
+        // Manage the work to do each frame using RecordAndSubmitTasks. Those that need to present results need to be wired up to respective Presentation objects.
         RecordAndSubmitTasks recordAndSubmitTasks;
 
         // Manage the presentation of rendering using Presentation objects
         using Presentations = std::vector<ref_ptr<Presentation>>;
         Presentations presentations;
 
-        /// create a RecordAndSubmitTask configured to manage specified commandGraphs and assign it to the viewer.
+        /// Create RecordAndSubmitTask and Presentation objects configured to manage specified commandGraphs and assign them to the viewer.
+        /// Replace any prexisting setup.
         virtual void assignRecordAndSubmitTaskAndPresentation(CommandGraphs commandGraphs);
+
+        /// Add command graphs creating RecordAndSubmitTask/Presentation objects where appropriate.
+        void addRecordAndSubmitTaskAndPresentation(CommandGraphs commandGraphs);
 
         ref_ptr<ActivityStatus> status;
         std::list<std::thread> threads;
@@ -125,6 +140,13 @@ namespace vsg
 
         /// Call vkDeviceWaitIdle on all the devices associated with this Viewer
         virtual void deviceWaitIdle() const;
+
+        /// Hook for assigning Instrumentation to enable profiling of record traversal.
+        uint64_t frameReference = 0;
+        ref_ptr<Instrumentation> instrumentation;
+
+        /// Convenience method for assigning Instrumentation to the viewer and any associated objects.
+        void assignInstrumentation(ref_ptr<Instrumentation> in_instrumentation);
 
     protected:
         virtual ~Viewer();
@@ -145,7 +167,7 @@ namespace vsg
     };
     VSG_type_name(vsg::Viewer);
 
-    /// update Viewer data structures to match the needs of newly compiled subgraph
+    /// update Viewer data structures to match the needs of newly compiled subgraphs
     extern VSG_DECLSPEC void updateViewer(Viewer& viewer, const CompileResult& compileResult);
 
 } // namespace vsg

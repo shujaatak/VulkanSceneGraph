@@ -14,6 +14,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <vsg/core/ref_ptr.h>
 #include <vsg/vk/AllocationCallbacks.h>
+#include <vsg/vk/InstanceExtensions.h>
 
 #include <vector>
 
@@ -24,12 +25,15 @@ namespace vsg
     class Surface;
 
     using Names = std::vector<const char*>;
+    using ExtensionProperties = std::vector<VkExtensionProperties>;
     using PhysicalDeviceTypes = std::vector<VkPhysicalDeviceType>;
     using InstanceLayerProperties = std::vector<VkLayerProperties>;
-    using InstanceExtensionProperties = std::vector<VkExtensionProperties>;
 
     /// wrapper for vkEnumerateInstanceExtensionProperties
-    extern VSG_DECLSPEC InstanceExtensionProperties enumerateInstanceExtensionProperties(const char* pLayerName = nullptr);
+    extern VSG_DECLSPEC ExtensionProperties enumerateInstanceExtensionProperties(const char* pLayerName = nullptr);
+
+    /// return true if the specified instance extension is supported
+    extern VSG_DECLSPEC bool isExtensionSupported(const char* extensionName, const char* pLayerName = nullptr);
 
     /// wrapper for vkEnumerateInstanceLayerProperties
     extern VSG_DECLSPEC InstanceLayerProperties enumerateInstanceLayerProperties();
@@ -37,13 +41,13 @@ namespace vsg
     /// return names of layers that are supported from the desired list.
     extern VSG_DECLSPEC Names validateInstancelayerNames(const Names& names);
 
-    /// Instance encapsulate the vkInstance.
+    /// Instance encapsulates the VkInstance.
     class VSG_DECLSPEC Instance : public Inherit<Object, Instance>
     {
     public:
         Instance(Names instanceExtensions, Names layers, uint32_t vulkanApiVersion = VK_API_VERSION_1_0, AllocationCallbacks* allocator = nullptr);
 
-        /// Vulkan apiVersion used when creating the VkInstaance
+        /// Vulkan apiVersion used when creating the VkInstance
         const uint32_t apiVersion = VK_API_VERSION_1_0;
 
         operator VkInstance() const { return _instance; }
@@ -68,6 +72,9 @@ namespace vsg
         /// get a PhysicalDevice and queue family index that supports the specified queueFlags, and presentation of specified surface if one is provided.
         std::tuple<ref_ptr<PhysicalDevice>, int, int> getPhysicalDeviceAndQueueFamily(VkQueueFlags queueFlags, Surface* surface, const PhysicalDeviceTypes& deviceTypePreferences = {}) const;
 
+        /// get the extensions structure that holds a range of function pointers to vkInstance extensions
+        const InstanceExtensions* getExtensions() const { return _extensions.get(); }
+
         /// get the address of specified function using vkGetInstanceProcAddr.
         template<typename T>
         bool getProcAddr(T& procAddress, const char* pName, const char* pNameFallback = nullptr) const
@@ -86,6 +93,10 @@ namespace vsg
         ref_ptr<AllocationCallbacks> _allocator;
 
         PhysicalDevices _physicalDevices;
+
+        ref_ptr<InstanceExtensions> _extensions;
+
+        VkDebugUtilsMessengerEXT _debugUtilsMessenger = VK_NULL_HANDLE;
     };
     VSG_type_name(vsg::Instance);
 

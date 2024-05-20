@@ -17,21 +17,26 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// MatrixTransform is a transform node that provides a 4x4 matrix that is used to position subgraphs in absolute coordinate frame.
+    /// AbsoluteTransform is a transform node that provides a 4x4 matrix that is used to position subgraphs in absolute coordinate frame.
     /// During the RecordTraversal the matrix is directly pushed to the State::modelviewMatrixStack stack without the normal multiplication.
-    /// After the subgraphs is traversed the matrix is popped from the State::modelviewMatrixStack.
+    /// After the subgraph is traversed the matrix is popped from the State::modelviewMatrixStack.
     class VSG_DECLSPEC AbsoluteTransform : public Inherit<Transform, AbsoluteTransform>
     {
     public:
         AbsoluteTransform();
+        AbsoluteTransform(const AbsoluteTransform& rhs, const CopyOp& copyop = {});
         explicit AbsoluteTransform(const dmat4& in_matrix);
 
-        void read(Input& input) override;
-        void write(Output& output) const override;
+        dmat4 matrix;
 
         dmat4 transform(const dmat4&) const override { return matrix; }
 
-        dmat4 matrix;
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return AbsoluteTransform::create(*this, copyop); }
+        int compare(const Object& rhs) const override;
+
+        void read(Input& input) override;
+        void write(Output& output) const override;
 
     protected:
     };

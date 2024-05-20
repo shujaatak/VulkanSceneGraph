@@ -18,12 +18,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// DescriptorImage is Descriptor class that encapsulates imageInfoList used to set VkWriteDescriptorSet.pImageInfo settings
-    /// DescriptorImage is means for passing textures to shaders.
+    /// DescriptorImage is a Descriptor class that encapsulates the imageInfoList used to set VkWriteDescriptorSet::pImageInfo settings
+    /// DescriptorImage is a means for passing textures to shaders.
     class VSG_DECLSPEC DescriptorImage : public Inherit<Descriptor, DescriptorImage>
     {
     public:
         DescriptorImage();
+        DescriptorImage(const DescriptorImage& rhs, const CopyOp& copyop = {});
 
         DescriptorImage(ref_ptr<Sampler> sampler, ref_ptr<Data> image, uint32_t dstBinding = 0, uint32_t dstArrayElement = 0, VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
@@ -37,19 +38,22 @@ namespace vsg
         /// VkWriteDescriptorSet.pImageInfo settings
         ImageInfoList imageInfoList;
 
+        void compile(Context& context) override;
+        void assignTo(Context& context, VkWriteDescriptorSet& wds) const override;
+        uint32_t getNumDescriptors() const override;
+
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return DescriptorImage::create(*this, copyop); }
         int compare(const Object& rhs_object) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;
 
-        void compile(Context& context) override;
-
-        void assignTo(Context& context, VkWriteDescriptorSet& wds) const override;
-
-        uint32_t getNumDescriptors() const override;
-
     protected:
     };
     VSG_type_name(vsg::DescriptorImage);
 
+    extern VSG_DECLSPEC ref_ptr<DescriptorImage> createSamplerDescriptor(ref_ptr<Sampler> sampler, uint32_t dstBinding = 0, uint32_t dstArrayElement = 0);
+    extern VSG_DECLSPEC ref_ptr<DescriptorImage> createCombinedImageSamplerDescriptor(ref_ptr<Sampler> sampler, ref_ptr<Data> image, uint32_t dstBinding = 0, uint32_t dstArrayElement = 0);
+    extern VSG_DECLSPEC ref_ptr<DescriptorImage> createSampedImageDescriptor(ref_ptr<Data> image, uint32_t dstBinding = 0, uint32_t dstArrayElement = 0);
 } // namespace vsg

@@ -12,23 +12,34 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <vsg/app/CommandGraph.h>
 #include <vsg/app/RenderGraph.h>
+#include <vsg/app/View.h>
 #include <vsg/io/DatabasePager.h>
+#include <vsg/state/ViewDependentState.h>
 #include <vsg/ui/ApplicationEvent.h>
+#include <vsg/utils/ShaderSet.h>
 #include <vsg/vk/State.h>
 
 using namespace vsg;
+
+CommandGraph::CommandGraph()
+{
+    CPU_INSTRUMENTATION_L1(instrumentation);
+}
 
 CommandGraph::CommandGraph(ref_ptr<Device> in_device, int family) :
     device(in_device),
     queueFamily(family),
     presentFamily(-1)
 {
+    CPU_INSTRUMENTATION_L1(instrumentation);
 }
 
 CommandGraph::CommandGraph(ref_ptr<Window> in_window, ref_ptr<Node> child) :
     window(in_window),
     device(in_window->getOrCreateDevice())
 {
+    CPU_INSTRUMENTATION_L1(instrumentation);
+
     VkQueueFlags queueFlags = VK_QUEUE_GRAPHICS_BIT;
     if (window->traits()) queueFlags = window->traits()->queueFlags;
 
@@ -39,6 +50,7 @@ CommandGraph::CommandGraph(ref_ptr<Window> in_window, ref_ptr<Node> child) :
 
 CommandGraph::~CommandGraph()
 {
+    CPU_INSTRUMENTATION_L1(instrumentation);
 }
 
 VkCommandBufferLevel CommandGraph::level() const
@@ -50,26 +62,38 @@ void CommandGraph::reset()
 {
 }
 
-void CommandGraph::record(CommandBuffers& recordedCommandBuffers, ref_ptr<FrameStamp> frameStamp, ref_ptr<DatabasePager> databasePager)
+ref_ptr<RecordTraversal> CommandGraph::getOrCreateRecordTraversal()
 {
+    //CPU_INSTRUMENTATION_L1(instrumentation);
+    if (!recordTraversal)
+    {
+        recordTraversal = RecordTraversal::create(maxSlot);
+    }
+    return recordTraversal;
+}
+
+void CommandGraph::record(ref_ptr<RecordedCommandBuffers> recordedCommandBuffers, ref_ptr<FrameStamp> frameStamp, ref_ptr<DatabasePager> databasePager)
+{
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "CommandGraph record", COLOR_RECORD_L1);
+
     if (window && !window->visible())
     {
         return;
     }
 
-    if (!recordTraversal)
-    {
-        recordTraversal = RecordTraversal::create(nullptr, maxSlot);
-    }
+    // create the RecordTraversal if it isn't already created
+    getOrCreateRecordTraversal();
 
     if ((maxSlot + 1) != recordTraversal->getState()->stateStacks.size())
     {
         recordTraversal->getState()->stateStacks.resize(maxSlot + 1);
     }
 
+    recordTraversal->recordedCommandBuffers = recordedCommandBuffers;
     recordTraversal->setFrameStamp(frameStamp);
     recordTraversal->setDatabasePager(databasePager);
     recordTraversal->clearBins();
+    recordTraversal->regionsOfInterest.clear();
 
     ref_ptr<CommandBuffer> commandBuffer;
     for (auto& cb : _commandBuffers)
@@ -98,7 +122,7 @@ void CommandGraph::record(CommandBuffers& recordedCommandBuffers, ref_ptr<FrameS
     // or select index when maps to a dormant CommandBuffer
     VkCommandBuffer vk_commandBuffer = *commandBuffer;
 
-    // need to set up the command
+    // need to set up the command buffer
     // if we are nested within a CommandBuffer already then use VkCommandBufferInheritanceInfo
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -107,16 +131,14 @@ void CommandGraph::record(CommandBuffers& recordedCommandBuffers, ref_ptr<FrameS
 
     vkBeginCommandBuffer(vk_commandBuffer, &beginInfo);
 
-    if (camera)
     {
-        recordTraversal->setProjectionAndViewMatrix(camera->projectionMatrix->transform(), camera->viewMatrix->transform());
+        COMMAND_BUFFER_INSTRUMENTATION(instrumentation, *commandBuffer, "CommandGraph record", COLOR_RECORD)
+        traverse(*recordTraversal);
     }
-
-    accept(*recordTraversal);
 
     vkEndCommandBuffer(vk_commandBuffer);
 
-    recordedCommandBuffers.push_back(commandBuffer);
+    recordedCommandBuffers->add(submitOrder, commandBuffer);
 }
 
 ref_ptr<CommandGraph> vsg::createCommandGraphForView(ref_ptr<Window> window, ref_ptr<Camera> camera, ref_ptr<Node> scenegraph, VkSubpassContents contents, bool assignHeadlight)

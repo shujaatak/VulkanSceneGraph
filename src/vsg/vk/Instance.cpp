@@ -13,25 +13,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/Exception.h>
 #include <vsg/io/Logger.h>
 #include <vsg/io/Options.h>
-#include <vsg/vk/Extensions.h>
+#include <vsg/vk/DeviceExtensions.h>
 #include <vsg/vk/Instance.h>
 #include <vsg/vk/PhysicalDevice.h>
 
+#include <algorithm>
+#include <cstring>
 #include <set>
 
 using namespace vsg;
 
-InstanceLayerProperties vsg::enumerateInstanceLayerProperties()
-{
-    uint32_t layerCount;
-    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
-
-    std::vector<VkLayerProperties> availableLayers(layerCount);
-    vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
-    return availableLayers;
-}
-
-InstanceExtensionProperties vsg::enumerateInstanceExtensionProperties(const char* pLayerName)
+ExtensionProperties vsg::enumerateInstanceExtensionProperties(const char* pLayerName)
 {
     uint32_t extCount = 0;
     VkResult result = vkEnumerateInstanceExtensionProperties(pLayerName, &extCount, nullptr);
@@ -41,7 +33,7 @@ InstanceExtensionProperties vsg::enumerateInstanceExtensionProperties(const char
         return {};
     }
 
-    InstanceExtensionProperties extensionProperties(extCount);
+    ExtensionProperties extensionProperties(extCount);
     result = vkEnumerateInstanceExtensionProperties(pLayerName, &extCount, extensionProperties.data());
     if (result != VK_SUCCESS)
     {
@@ -49,6 +41,23 @@ InstanceExtensionProperties vsg::enumerateInstanceExtensionProperties(const char
         return {};
     }
     return extensionProperties;
+}
+
+bool vsg::isExtensionSupported(const char* extensionName, const char* pLayerName)
+{
+    auto extProps = enumerateInstanceExtensionProperties(pLayerName);
+    auto compare = [&](const VkExtensionProperties& rhs) { return strcmp(extensionName, rhs.extensionName) == 0; };
+    return std::find_if(extProps.begin(), extProps.end(), compare) != extProps.end();
+}
+
+InstanceLayerProperties vsg::enumerateInstanceLayerProperties()
+{
+    uint32_t layerCount;
+    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+    std::vector<VkLayerProperties> availableLayers(layerCount);
+    vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+    return availableLayers;
 }
 
 Names vsg::validateInstancelayerNames(const Names& names)
@@ -81,6 +90,27 @@ Names vsg::validateInstancelayerNames(const Names& names)
     }
 
     return validatedNames;
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugUtilsMessengerCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT /*messageType*/,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* /*pUserData*/)
+{
+    vsg::Logger::Level level = vsg::Logger::LOGGER_INFO;
+    if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0)
+        level = vsg::Logger::LOGGER_ERROR;
+    else if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) != 0)
+        level = vsg::Logger::LOGGER_WARN;
+    else if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) != 0)
+        level = vsg::Logger::LOGGER_INFO;
+    else if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) != 0)
+        level = vsg::Logger::LOGGER_DEBUG;
+
+    vsg::log(level, "[Vulkan] ", pCallbackData->pMessage);
+
+    return VK_FALSE;
 }
 
 Instance::Instance(Names instanceExtensions, Names layers, uint32_t vulkanApiVersion, AllocationCallbacks* allocator) :
@@ -134,6 +164,18 @@ Instance::Instance(Names instanceExtensions, Names layers, uint32_t vulkanApiVer
     {
         throw Exception{"Error: vsg::Instance::create(...) failed to create VkInstance.", result};
     }
+
+    _extensions = InstanceExtensions::create(this);
+
+    if (isExtensionSupported(VK_EXT_DEBUG_UTILS_EXTENSION_NAME) && _extensions->vkCreateDebugUtilsMessengerEXT)
+    {
+        VkDebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfo{};
+        debugUtilsMessengerCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+        debugUtilsMessengerCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+        debugUtilsMessengerCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+        debugUtilsMessengerCreateInfo.pfnUserCallback = debugUtilsMessengerCallback;
+        result = _extensions->vkCreateDebugUtilsMessengerEXT(instance, &debugUtilsMessengerCreateInfo, nullptr, &_debugUtilsMessenger);
+    }
 }
 
 Instance::~Instance()
@@ -142,6 +184,11 @@ Instance::~Instance()
 
     if (_instance)
     {
+        if (_debugUtilsMessenger != VK_NULL_HANDLE && _extensions->vkDestroyDebugUtilsMessengerEXT)
+        {
+            _extensions->vkDestroyDebugUtilsMessengerEXT(_instance, _debugUtilsMessenger, nullptr);
+        }
+
         vkDestroyInstance(_instance, _allocator);
     }
 }

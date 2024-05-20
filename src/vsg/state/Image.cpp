@@ -103,6 +103,8 @@ Image::Image(ref_ptr<Data> in_data) :
             format = static_cast<VkFormat>(format + 7);
         else if (format >= VK_FORMAT_R32G32B32_UINT && format <= VK_FORMAT_R32G32B32_SFLOAT)
             format = static_cast<VkFormat>(format + 3);
+
+        usage = (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
     }
 }
 
@@ -203,7 +205,7 @@ void Image::compile(Device* device)
 
     if (VkResult result = vkCreateImage(*vd.device, &info, vd.device->getAllocationCallbacks(), &vd.image); result != VK_SUCCESS)
     {
-        throw Exception{"Error: Failed to create vkImage.", result};
+        throw Exception{"Error: Failed to create VkImage.", result};
     }
 }
 
@@ -221,7 +223,7 @@ void Image::compile(Context& context)
 
     if (!deviceMemory)
     {
-        throw Exception{"Error: allocate memory to reserve slot.", VK_ERROR_OUT_OF_DEVICE_MEMORY};
+        throw Exception{"Error: Image failed to reserve slot from deviceMemoryBufferPools.", VK_ERROR_OUT_OF_DEVICE_MEMORY};
     }
 
     vd.requiresDataCopy = data.valid();

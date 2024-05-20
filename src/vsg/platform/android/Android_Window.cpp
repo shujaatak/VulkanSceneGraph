@@ -21,7 +21,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/io/Logger.h>
 #include <vsg/ui/KeyEvent.h>
 #include <vsg/ui/TouchEvent.h>
-#include <vsg/vk/Extensions.h>
 
 #include <time.h>
 
@@ -55,7 +54,7 @@ namespace vsgAndroid
             auto result = vkCreateAndroidSurfaceKHR(*instance, &surfaceCreateInfo, _instance->getAllocationCallbacks(), &_surface);
             if (result != VK_SUCCESS)
             {
-                throw Exception{"Failed to created AndroidSurface.", result};
+                throw Exception{"Failed to create AndroidSurface.", result};
             }
         }
     };
@@ -255,7 +254,7 @@ KeyboardMap::KeyboardMap()
 
             /*
         * Auxiliary Functions; note the duplicate definitions for left and right
-        * function keys;  Sun keyboards and a few other manufactures have such
+        * function keys;  Sun keyboards and a few other manufacturers have such
         * function key groups on the left and/or right sides of the keyboard.
         * We've not found a keyboard with more than 35 function keys total.
         */
@@ -339,16 +338,13 @@ Android_Window::Android_Window(vsg::ref_ptr<WindowTraits> traits) :
         _window = nativeWindow;
     }
 
-    // we could get the width height from the window?
+    // we could get the width and height from the window?
     uint32_t finalWidth = traits->width;
     uint32_t finalHeight = traits->height;
 
-    vsg::ref_ptr<Android_Window> window;
-
-    if (traits->shareWindow)
+    if (traits->device)
     {
-        // share the _instance, _physicalDevice and _device;
-        window->share(*traits->shareWindow);
+        share(traits->device);
     }
 
     _extent2D.width = finalWidth;

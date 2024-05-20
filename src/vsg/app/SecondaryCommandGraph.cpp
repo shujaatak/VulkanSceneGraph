@@ -15,6 +15,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/app/View.h>
 #include <vsg/commands/ExecuteCommands.h>
 #include <vsg/io/DatabasePager.h>
+#include <vsg/lighting/Light.h>
 #include <vsg/ui/ApplicationEvent.h>
 #include <vsg/vk/State.h>
 
@@ -56,7 +57,24 @@ void SecondaryCommandGraph::_disconnect(ExecuteCommands* ec)
     if (itr != _executeCommands.end()) _executeCommands.erase(itr);
 }
 
-void SecondaryCommandGraph::record(CommandBuffers& recordedCommandBuffers, ref_ptr<FrameStamp> frameStamp, ref_ptr<DatabasePager> databasePager)
+RenderPass* SecondaryCommandGraph::getRenderPass()
+{
+    if (renderPass)
+    {
+        return renderPass;
+    }
+    else if (framebuffer)
+    {
+        return framebuffer->getRenderPass();
+    }
+    else if (window)
+    {
+        return window->getOrCreateRenderPass();
+    }
+    return nullptr;
+}
+
+void SecondaryCommandGraph::record(ref_ptr<RecordedCommandBuffers> recordedCommandBuffers, ref_ptr<FrameStamp> frameStamp, ref_ptr<DatabasePager> databasePager)
 {
     if (window && !window->visible())
     {
@@ -65,7 +83,7 @@ void SecondaryCommandGraph::record(CommandBuffers& recordedCommandBuffers, ref_p
 
     if (!recordTraversal)
     {
-        recordTraversal = RecordTraversal::create(nullptr, maxSlot);
+        recordTraversal = RecordTraversal::create(maxSlot);
     }
 
     if ((maxSlot + 1) != recordTraversal->getState()->stateStacks.size())
@@ -73,6 +91,7 @@ void SecondaryCommandGraph::record(CommandBuffers& recordedCommandBuffers, ref_p
         recordTraversal->getState()->stateStacks.resize(maxSlot + 1);
     }
 
+    recordTraversal->recordedCommandBuffers = recordedCommandBuffers;
     recordTraversal->setFrameStamp(frameStamp);
     recordTraversal->setDatabasePager(databasePager);
     recordTraversal->clearBins();
@@ -104,7 +123,7 @@ void SecondaryCommandGraph::record(CommandBuffers& recordedCommandBuffers, ref_p
     // or select index when maps to a dormant CommandBuffer
     VkCommandBuffer vk_commandBuffer = *commandBuffer;
 
-    // need to set up the command
+    // need to set up the command buffer
     // if we are nested within a CommandBuffer already then use VkCommandBufferInheritanceInfo
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -119,28 +138,26 @@ void SecondaryCommandGraph::record(CommandBuffers& recordedCommandBuffers, ref_p
     inheritanceInfo.pipelineStatistics = pipelineStatistics;
     beginInfo.pInheritanceInfo = &inheritanceInfo;
 
+    if (auto activeRenderPass = getRenderPass())
+        inheritanceInfo.renderPass = *(activeRenderPass);
+    else
+        inheritanceInfo.renderPass = VK_NULL_HANDLE;
+
+    inheritanceInfo.subpass = subpass;
+
     if (framebuffer)
     {
-        inheritanceInfo.renderPass = *(framebuffer->getRenderPass());
-        inheritanceInfo.subpass = subpass;
         inheritanceInfo.framebuffer = *framebuffer;
     }
     else if (window)
     {
-        inheritanceInfo.renderPass = *(window->getRenderPass());
-        inheritanceInfo.subpass = subpass;
         //inheritanceInfo.framebuffer = *(window->framebuffer(window->nextImageIndex()));
         inheritanceInfo.framebuffer = VK_NULL_HANDLE;
     }
 
     vkBeginCommandBuffer(vk_commandBuffer, &beginInfo);
 
-    if (camera)
-    {
-        recordTraversal->setProjectionAndViewMatrix(camera->projectionMatrix->transform(), camera->viewMatrix->transform());
-    }
-
-    accept(*recordTraversal);
+    traverse(*recordTraversal);
 
     vkEndCommandBuffer(vk_commandBuffer);
 
@@ -150,7 +167,7 @@ void SecondaryCommandGraph::record(CommandBuffers& recordedCommandBuffers, ref_p
         ec->completed(*this, commandBuffer);
     }
 
-    recordedCommandBuffers.push_back(commandBuffer);
+    recordedCommandBuffers->add(submitOrder, commandBuffer);
 }
 
 ref_ptr<SecondaryCommandGraph> vsg::createSecondaryCommandGraphForView(ref_ptr<Window> window, ref_ptr<Camera> camera, ref_ptr<Node> scenegraph, uint32_t subpass, bool assignHeadlight)
@@ -161,8 +178,6 @@ ref_ptr<SecondaryCommandGraph> vsg::createSecondaryCommandGraphForView(ref_ptr<W
     if (scenegraph) view->addChild(scenegraph);
 
     auto commandGraph = SecondaryCommandGraph::create(window, view, subpass);
-
-    commandGraph->camera = camera;
 
     return commandGraph;
 }

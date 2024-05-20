@@ -32,7 +32,29 @@ void BinaryInput::_read(std::string& value)
     _input.read(value.data(), size);
 }
 
+void BinaryInput::_read(std::wstring& value)
+{
+    std::string string_value;
+    _read(string_value);
+    convert_utf(string_value, value);
+}
+
 void BinaryInput::read(size_t num, std::string* value)
+{
+    if (num == 1)
+    {
+        _read(*value);
+    }
+    else
+    {
+        for (; num > 0; --num, ++value)
+        {
+            _read(*value);
+        }
+    }
+}
+
+void BinaryInput::read(size_t num, std::wstring* value)
 {
     if (num == 1)
     {
@@ -77,11 +99,10 @@ vsg::ref_ptr<vsg::Object> BinaryInput::read()
     else
     {
         std::string className = readValue<std::string>(nullptr);
-
-        vsg::ref_ptr<vsg::Object> object;
         if (className != "nullptr")
         {
-            object = objectFactory->create(className.c_str());
+            auto object = objectFactory->create(className.c_str());
+            objectIDMap[id] = object;
             if (object)
             {
                 object->read(*this);
@@ -90,9 +111,11 @@ vsg::ref_ptr<vsg::Object> BinaryInput::read()
             {
                 warn("Unable to create instance of class : ", className);
             }
+            return object;
         }
-
-        objectIDMap[id] = object;
-        return object;
+        else
+        {
+            return objectIDMap[id] = {};
+        }
     }
 }

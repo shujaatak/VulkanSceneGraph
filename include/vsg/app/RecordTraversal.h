@@ -33,8 +33,14 @@ namespace vsg
     class CullGroup;
     class CullNode;
     class DepthSorted;
+    class Layer;
     class Transform;
     class MatrixTransform;
+    class Joint;
+    class TileDatabase;
+    class VertexDraw;
+    class VertexIndexDraw;
+    class Geometry;
     class Command;
     class Commands;
     class CommandBuffer;
@@ -45,20 +51,24 @@ namespace vsg
     class View;
     class Bin;
     class Switch;
+    class RegionOfInterest;
     class ViewDependentState;
     class Light;
     class AmbientLight;
     class DirectionalLight;
     class PointLight;
     class SpotLight;
+    class CommandGraph;
+    class RecordedCommandBuffers;
+    class Instrumentation;
 
     VSG_type_name(vsg::RecordTraversal);
 
-    /// RecordTraversal traverses a scene graph doing view frustum culling and invoking state/commands to record them to Vulkan command buffer
+    /// RecordTraversal traverses a scene graph doing view frustum culling and invoking state/commands to record them to a Vulkan command buffer
     class VSG_DECLSPEC RecordTraversal : public Object
     {
     public:
-        explicit RecordTraversal(CommandBuffer* in_commandBuffer = nullptr, uint32_t in_maxSlot = 2, std::set<Bin*> in_bins = {});
+        explicit RecordTraversal(uint32_t in_maxSlot = 2, std::set<Bin*> in_bins = {});
 
         RecordTraversal(const RecordTraversal&) = delete;
         RecordTraversal& operator=(const RecordTraversal& rhs) = delete;
@@ -66,7 +76,7 @@ namespace vsg
         template<typename... Args>
         static ref_ptr<RecordTraversal> create(Args&&... args)
         {
-            return ref_ptr<RecordTraversal>(new RecordTraversal(args...));
+            return ref_ptr<RecordTraversal>(new RecordTraversal(std::forward<Args>(args)...));
         }
 
         std::size_t sizeofObject() const noexcept override { return sizeof(RecordTraversal); }
@@ -75,13 +85,18 @@ namespace vsg
         Mask traversalMask = MASK_ALL;
         Mask overrideMask = MASK_OFF;
 
-        /// get the current State object used to track state and projection/modelview matrices for current subgraph being traversed
+        ref_ptr<Instrumentation> instrumentation;
+
+        /// Container for CommandBuffers that have been recorded in current frame
+        ref_ptr<RecordedCommandBuffers> recordedCommandBuffers;
+
+        /// get the current State object used to track state and projection/modelview matrices for the current subgraph being traversed
         State* getState() { return _state; }
 
-        /// get the current CommandBuffer for current subgraph being traversed
+        /// get the current CommandBuffer for the current subgraph being traversed
         CommandBuffer* getCommandBuffer();
 
-        /// get the current DeviceID for current subgraph being traversed
+        /// get the current DeviceID for the current subgraph being traversed
         uint32_t deviceID() const;
 
         void setFrameStamp(FrameStamp* fs);
@@ -90,8 +105,6 @@ namespace vsg
         void setDatabasePager(DatabasePager* dp);
         DatabasePager* getDatabasePager() { return _databasePager; }
 
-        void setProjectionAndViewMatrix(const dmat4& projMatrix, const dmat4& viewMatrix);
-
         void apply(const Object& object);
 
         // scene graph nodes
@@ -99,10 +112,18 @@ namespace vsg
         void apply(const QuadGroup& quadGroup);
         void apply(const LOD& lod);
         void apply(const PagedLOD& pagedLOD);
+        void apply(const TileDatabase& tileDatabase);
         void apply(const CullGroup& cullGroup);
         void apply(const CullNode& cullNode);
         void apply(const DepthSorted& depthSorted);
+        void apply(const Layer& layer);
         void apply(const Switch& sw);
+        void apply(const RegionOfInterest& roi);
+
+        // leaf node
+        void apply(const VertexDraw& vid);
+        void apply(const VertexIndexDraw& vid);
+        void apply(const Geometry& vid);
 
         // positional state
         void apply(const Light& light);
@@ -111,28 +132,42 @@ namespace vsg
         void apply(const PointLight& light);
         void apply(const SpotLight& light);
 
-        // Vulkan nodes
+        // transform nodes
         void apply(const Transform& transform);
         void apply(const MatrixTransform& mt);
+
+        // Animation nodes
+        void apply(const Joint& joint);
+
+        // Vulkan nodes
         void apply(const StateGroup& object);
+
+        // Commands
         void apply(const Commands& commands);
         void apply(const Command& command);
 
         // Viewer level nodes
+        void apply(const Bin& bin);
         void apply(const View& view);
+        void apply(const CommandGraph& commandGraph);
+
+        void addToBin(int32_t binNumber, double value, const Node* node);
 
         // clear the bins to record a new frame.
         void clearBins();
 
+        // list of pairs of modelview matrix & region of interest
+        std::vector<std::pair<dmat4, const RegionOfInterest*>> regionsOfInterest;
+
     protected:
         virtual ~RecordTraversal();
 
-        FrameStamp* _frameStamp = nullptr;
-        State* _state = nullptr;
+        ref_ptr<FrameStamp> _frameStamp;
+        ref_ptr<State> _state;
 
         // used to handle loading of PagedLOD external children.
-        DatabasePager* _databasePager = nullptr;
-        CulledPagedLODs* _culledPagedLODs = nullptr;
+        ref_ptr<DatabasePager> _databasePager;
+        ref_ptr<CulledPagedLODs> _culledPagedLODs;
 
         int32_t _minimumBinNumber = 0;
         std::vector<ref_ptr<Bin>> _bins;

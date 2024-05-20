@@ -22,8 +22,8 @@ WindowTraits::WindowTraits()
     defaults();
 }
 
-WindowTraits::WindowTraits(const WindowTraits& traits) :
-    Inherit(traits),
+WindowTraits::WindowTraits(const WindowTraits& traits, const CopyOp& copyop) :
+    Inherit(traits, copyop),
     x(traits.x),
     y(traits.y),
     width(traits.width),
@@ -41,16 +41,19 @@ WindowTraits::WindowTraits(const WindowTraits& traits) :
     depthFormat(traits.depthFormat),
     depthImageUsage(traits.depthImageUsage),
     queueFlags(traits.queueFlags),
+    queuePiorities(traits.queuePiorities),
     imageAvailableSemaphoreWaitFlag(traits.imageAvailableSemaphoreWaitFlag),
     debugLayer(traits.debugLayer),
+    synchronizationLayer(traits.synchronizationLayer),
     apiDumpLayer(traits.apiDumpLayer),
+    debugUtils(traits.debugUtils),
+    device(traits.device),
     instanceExtensionNames(traits.instanceExtensionNames),
     requestedLayers(traits.requestedLayers),
     deviceExtensionNames(traits.deviceExtensionNames),
     deviceTypePreferences(traits.deviceTypePreferences),
     deviceFeatures(traits.deviceFeatures),
-    samples(traits.samples),
-    shareWindow(traits.shareWindow) /*,
+    samples(traits.samples) /*,
     nativeWindow(traits.nativeWindow),
     systemConnection(traits.systemConnection)*/
 {
@@ -87,7 +90,7 @@ void WindowTraits::defaults()
     vkEnumerateInstanceVersion(&vulkanVersion);
 #endif
 
-    // vsg::DeviceFeatures use instance extension
+    // vsg::DeviceFeatures uses the instance extension
     instanceExtensionNames.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 
     // provide anisotropic filtering as standard.
@@ -104,7 +107,10 @@ void WindowTraits::validate()
     {
         instanceExtensionNames.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     }
-
+    if (debugUtils && isExtensionSupported(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
+    {
+        instanceExtensionNames.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
     if (debugLayer) requestedLayers.push_back("VK_LAYER_KHRONOS_validation");
     if (apiDumpLayer) requestedLayers.push_back("VK_LAYER_LUNARG_api_dump");
     if (synchronizationLayer) requestedLayers.push_back("VK_LAYER_KHRONOS_synchronization2");

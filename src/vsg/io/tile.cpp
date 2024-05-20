@@ -23,6 +23,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/nodes/PagedLOD.h>
 #include <vsg/nodes/StateGroup.h>
 #include <vsg/nodes/TileDatabase.h>
+#include <vsg/nodes/VertexIndexDraw.h>
 #include <vsg/state/BindDescriptorSet.h>
 #include <vsg/state/ColorBlendState.h>
 #include <vsg/state/DepthStencilState.h>
@@ -32,7 +33,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/state/MultisampleState.h>
 #include <vsg/state/RasterizationState.h>
 #include <vsg/state/VertexInputState.h>
-#include <vsg/state/ViewDependentState.h>
 #include <vsg/state/material.h>
 #include <vsg/ui/UIEvent.h>
 #include <vsg/utils/ComputeBounds.h>
@@ -118,6 +118,8 @@ vsg::Path tile::getTilePath(const vsg::Path& src, uint32_t x, uint32_t y, uint32
 
 vsg::ref_ptr<vsg::Object> tile::read(const vsg::Path& filename, vsg::ref_ptr<const vsg::Options> options) const
 {
+    CPU_INSTRUMENTATION_L1_NC(options ? options->instrumentation.get() : nullptr, "tile read", COLOR_READ);
+
     auto extension = vsg::lowerCaseFileExtension(filename);
     if (extension != ".tile") return {};
 
@@ -141,6 +143,8 @@ vsg::ref_ptr<vsg::Object> tile::read(const vsg::Path& filename, vsg::ref_ptr<con
 
 vsg::ref_ptr<vsg::Object> tile::read_root(vsg::ref_ptr<const vsg::Options> options) const
 {
+    CPU_INSTRUMENTATION_L2_NC(options ? options->instrumentation.get() : nullptr, "tile read_root", COLOR_READ);
+
     auto group = createRoot();
 
     uint32_t lod = 0;
@@ -164,7 +168,7 @@ vsg::ref_ptr<vsg::Object> tile::read_root(vsg::ref_ptr<const vsg::Options> optio
 
                     auto plod = vsg::PagedLOD::create();
                     plod->bound = bound;
-                    plod->children[0] = vsg::PagedLOD::Child{0.25, {}};       // external child visible when it's bound occupies more than 1/4 of the height of the window
+                    plod->children[0] = vsg::PagedLOD::Child{0.25, {}};       // external child visible when its bound occupies more than 1/4 of the height of the window
                     plod->children[1] = vsg::PagedLOD::Child{0.0, tile_node}; // visible always
                     plod->filename = vsg::make_string(x, " ", y, " 0.tile");
                     plod->options = Options::create_if(options, *options);
@@ -192,7 +196,7 @@ vsg::ref_ptr<vsg::Object> tile::read_root(vsg::ref_ptr<const vsg::Options> optio
     group->accept(collectResourceRequirements);
     group->setObject("ResourceHints", collectResourceRequirements.createResourceHints(tileMultiplier));
 
-    // assign the EllipsoidModel so that the overall geometry of the database can be used as guide for clipping and navigation.
+    // assign the EllipsoidModel so that the overall geometry of the database can be used as a guide for clipping and navigation.
     group->setObject("EllipsoidModel", settings->ellipsoidModel);
 
     return group;
@@ -200,8 +204,9 @@ vsg::ref_ptr<vsg::Object> tile::read_root(vsg::ref_ptr<const vsg::Options> optio
 
 vsg::ref_ptr<vsg::Object> tile::read_subtile(uint32_t x, uint32_t y, uint32_t lod, vsg::ref_ptr<const vsg::Options> options) const
 {
-    // need to load subtile x y lod
+    CPU_INSTRUMENTATION_L2_NC(options ? options->instrumentation.get() : nullptr, "tile read_subtile", COLOR_READ);
 
+    // need to load subtile x y lod
     vsg::time_point start_read = vsg::clock::now();
 
     auto group = vsg::Group::create();
@@ -253,7 +258,7 @@ vsg::ref_ptr<vsg::Object> tile::read_subtile(uint32_t x, uint32_t y, uint32_t lo
                     {
                         auto plod = vsg::PagedLOD::create();
                         plod->bound = bound;
-                        plod->children[0] = vsg::PagedLOD::Child{settings->lodTransitionScreenHeightRatio, {}}; // external child visible when it's bound occupies more than 1/4 of the height of the window
+                        plod->children[0] = vsg::PagedLOD::Child{settings->lodTransitionScreenHeightRatio, {}}; // external child visible when its bound occupies more than 1/4 of the height of the window
                         plod->children[1] = vsg::PagedLOD::Child{0.0, tile_node};                               // visible always
                         plod->filename = vsg::make_string(tileID.local_x, " ", tileID.local_y, " ", local_lod, ".tile");
                         plod->options = Options::create_if(options, *options);
@@ -295,6 +300,8 @@ vsg::ref_ptr<vsg::Object> tile::read_subtile(uint32_t x, uint32_t y, uint32_t lo
 
 void tile::init(vsg::ref_ptr<const vsg::Options> options)
 {
+    CPU_INSTRUMENTATION_L2_NC(options ? options->instrumentation.get() : nullptr, "tile init", COLOR_READ);
+
     if (settings->shaderSet)
     {
         _shaderSet = settings->shaderSet;
@@ -317,6 +324,11 @@ void tile::init(vsg::ref_ptr<const vsg::Options> options)
 
     _graphicsPipelineConfig = GraphicsPipelineConfigurator::create(_shaderSet);
 
+    if (options)
+    {
+        _graphicsPipelineConfig->assignInheritedState(options->inheritedState);
+    }
+
     if (settings->imageLayer)
     {
         _graphicsPipelineConfig->enableTexture("diffuseMap");
@@ -327,27 +339,27 @@ void tile::init(vsg::ref_ptr<const vsg::Options> options)
         _graphicsPipelineConfig->enableTexture("displacementMap");
     }
 #endif
-    _graphicsPipelineConfig->enableUniform("material");
+    _graphicsPipelineConfig->enableDescriptor("material");
 
     _graphicsPipelineConfig->enableArray("vsg_Vertex", VK_VERTEX_INPUT_RATE_VERTEX, 12, VK_FORMAT_R32G32B32_SFLOAT);
     _graphicsPipelineConfig->enableArray("vsg_Normal", VK_VERTEX_INPUT_RATE_VERTEX, 12, VK_FORMAT_R32G32B32_SFLOAT);
     _graphicsPipelineConfig->enableArray("vsg_TexCoord0", VK_VERTEX_INPUT_RATE_VERTEX, 8, VK_FORMAT_R32G32_SFLOAT);
     _graphicsPipelineConfig->enableArray("vsg_Color", VK_VERTEX_INPUT_RATE_INSTANCE, 16, VK_FORMAT_R32G32B32A32_SFLOAT);
 
-    if (settings->lighting)
+    if (auto& materialBinding = _shaderSet->getDescriptorBinding("material"))
     {
-        auto vdsl = ViewDescriptorSetLayout::create();
-        _graphicsPipelineConfig->additionalDescriptorSetLayout = vdsl;
-    }
+        // use the ShaderSet's DescriptorBinding.set to set the _materialSetIndex used to assign the tile texture and material
+        _materialSetIndex = materialBinding.set;
 
-    if (auto& materialBinding = _shaderSet->getUniformBinding("material"))
-    {
         ref_ptr<Data> mat = materialBinding.data;
         if (!mat) mat = vsg::PhongMaterialValue::create();
         _material = vsg::DescriptorBuffer::create(mat, materialBinding.binding, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     }
     else
     {
+        // default to set 1 as we'll assumed the viewdependent state is assigned to set 0.
+        _materialSetIndex = 1;
+
         auto mat = vsg::PhongMaterialValue::create();
         _material = vsg::DescriptorBuffer::create(mat, 10, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     }
@@ -358,13 +370,8 @@ void tile::init(vsg::ref_ptr<const vsg::Options> options)
 vsg::ref_ptr<vsg::StateGroup> tile::createRoot() const
 {
     auto root = vsg::StateGroup::create();
-    root->add(_graphicsPipelineConfig->bindGraphicsPipeline);
 
-    if (settings->lighting)
-    {
-        auto bindViewDescriptorSets = BindViewDescriptorSets::create(VK_PIPELINE_BIND_POINT_GRAPHICS, _graphicsPipelineConfig->layout, 1);
-        root->add(bindViewDescriptorSets);
-    }
+    _graphicsPipelineConfig->copyTo(root, {});
 
     return root;
 }
@@ -395,7 +402,7 @@ vsg::ref_ptr<vsg::Node> tile::createECEFTile(const vsg::dbox& tile_extents, vsg:
     // create texture image, material and associated DescriptorSets and binding
     auto texture = vsg::DescriptorImage::create(_sampler, textureData, 0, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-    auto bindDescriptorSet = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, _graphicsPipelineConfig->layout, 0, vsg::Descriptors{texture, _material});
+    auto bindDescriptorSet = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, _graphicsPipelineConfig->layout, _materialSetIndex, vsg::Descriptors{texture, _material});
 
     // create StateGroup to bind any texture state
     auto scenegraph = vsg::StateGroup::create();
@@ -470,13 +477,13 @@ vsg::ref_ptr<vsg::Node> tile::createECEFTile(const vsg::dbox& tile_extents, vsg:
     }
 
     // setup geometry
-    auto drawCommands = vsg::Commands::create();
-    drawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{vertices, normals, texcoords, colors}));
-    drawCommands->addChild(vsg::BindIndexBuffer::create(indices));
-    drawCommands->addChild(vsg::DrawIndexed::create(static_cast<uint32_t>(indices->size()), 1, 0, 0, 0));
+    auto vid = vsg::VertexIndexDraw::create();
+    vid->assignArrays(vsg::DataList{vertices, normals, texcoords, colors});
+    vid->assignIndices(indices);
+    vid->indexCount = static_cast<uint32_t>(indices->size());
+    vid->instanceCount = 1;
 
-    // add drawCommands to transform
-    transform->addChild(drawCommands);
+    transform->addChild(vid);
 
     return scenegraph;
 }
@@ -488,7 +495,7 @@ vsg::ref_ptr<vsg::Node> tile::createTextureQuad(const vsg::dbox& tile_extents, v
     // create texture image and associated DescriptorSets and binding
     auto texture = vsg::DescriptorImage::create(_sampler, textureData, 0, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-    auto bindDescriptorSet = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, _graphicsPipelineConfig->layout, 0, vsg::Descriptors{texture});
+    auto bindDescriptorSet = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, _graphicsPipelineConfig->layout, _materialSetIndex, vsg::Descriptors{texture});
 
     // create StateGroup to bind any texture state
     auto scenegraph = vsg::StateGroup::create();
@@ -518,7 +525,7 @@ vsg::ref_ptr<vsg::Node> tile::createTextureQuad(const vsg::dbox& tile_extents, v
          {1.0f, 1.0f, 1.0f},
          {1.0f, 1.0f, 1.0f}}); // VK_FORMAT_R32G32B32_SFLOAT, VK_VERTEX_INPUT_RATE_VERTEX, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE
 
-    uint8_t origin = textureData->properties.origin; // in Vulkan the origin is by default top left.
+    uint8_t origin = textureData->properties.origin; // in Vulkan the origin is top left by default.
     float left = 0.0f;
     float right = 1.0f;
     float top = (origin == vsg::TOP_LEFT) ? 0.0f : 1.0f;

@@ -16,10 +16,27 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
-    /// StateSwitch is a StateCommand that provides support, during the RecordTraveral, for applying StateCommand children based on pass a mask.
-    /// Can be used for enable state for specific View's were the StateSwitch child masks are matched the View mask.
+    /// StateSwitch is a StateCommand that provides support, during the RecordTraveral, for applying StateCommand children based on passing a mask.
+    /// Can be used to enable state for specific Views where the StateSwitch child masks are matched with the View mask.
     class VSG_DECLSPEC StateSwitch : public Inherit<StateCommand, StateSwitch>
     {
+    public:
+        StateSwitch();
+        StateSwitch(const StateSwitch& rhs, const CopyOp& copyop = {});
+
+        void add(Mask mask, ref_ptr<StateCommand> sc) { children.emplace_back(Child{mask, sc}); }
+
+        struct Child
+        {
+            Mask mask = MASK_ALL;
+            ref_ptr<StateCommand> stateCommand;
+        };
+
+        std::vector<Child> children;
+
+        void compile(Context& context) override;
+        void record(CommandBuffer& commandBuffer) const override;
+
     public:
         template<class N, class V>
         static void t_traverse(N& sc, V& visitor)
@@ -33,21 +50,11 @@ namespace vsg
         void traverse(Visitor& visitor) override { t_traverse(*this, visitor); }
         void traverse(ConstVisitor& visitor) const override { t_traverse(*this, visitor); }
 
-        void compile(Context& context) override;
-        void record(CommandBuffer& commandBuffer) const override;
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return StateSwitch::create(*this, copyop); }
+        int compare(const Object& rhs_object) const override;
 
         void read(Input& input) override;
         void write(Output& output) const override;
-
-        void add(Mask mask, ref_ptr<StateCommand> sc) { children.emplace_back(Child{mask, sc}); }
-
-        struct Child
-        {
-            Mask mask = MASK_ALL;
-            ref_ptr<StateCommand> stateCommand;
-        };
-
-        std::vector<Child> children;
     };
     VSG_type_name(vsg::StateSwitch);
 

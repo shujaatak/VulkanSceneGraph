@@ -24,16 +24,16 @@ namespace vsg
     // forward declare
     class CommandBuffer;
 
-    /// StateGroup is a Group node that manages a list of StateCommands that are use during the RecordTraversal for applying state to subgraph
-    /// When the RecordTraversal encounters a The StateGroup the StateGroup::stateCommands are pushed to the appropriate vsg::State stacks
+    /// StateGroup is a Group node that manages a list of StateCommands that are used during the RecordTraversal for applying state to subgraphs
+    /// When the RecordTraversal encounters the StateGroup its StateGroup::stateCommands are pushed to the appropriate vsg::State stacks
     /// and when a Command is encountered during the RecordTraversal the current head of these State stacks are applied.  After traversing
     /// the StateGroup's subgraph the StateGroup::stateCommands are popped from the vsg::State stacks.
     class VSG_DECLSPEC StateGroup : public Inherit<Group, StateGroup>
     {
     public:
         StateGroup();
+        StateGroup(const StateGroup& rhs, const CopyOp& copyop = {});
 
-        using StateCommands = std::vector<ref_ptr<StateCommand>, allocator_affinity_nodes<ref_ptr<StateCommand>>>;
         StateCommands stateCommands;
 
         /// if the shaders associated with GraphicsPipeline don't treat the array 0 as xyz vertex then provide an ArrayState prototype to provide custom mapping of arrays to vertices.
@@ -59,12 +59,26 @@ namespace vsg
             }
         }
 
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return StateGroup::create(*this, copyop); }
         int compare(const Object& rhs) const override;
+
+        template<class N, class V>
+        static void t_traverse(N& node, V& visitor)
+        {
+            for (auto& sc : node.stateCommands) sc->accept(visitor);
+            for (auto& child : node.children) child->accept(visitor);
+        }
+
+        void traverse(Visitor& visitor) override { t_traverse(*this, visitor); }
+        void traverse(ConstVisitor& visitor) const override { t_traverse(*this, visitor); }
+        void traverse(RecordTraversal& visitor) const override
+        {
+            for (auto& child : children) child->accept(visitor);
+        }
 
         void read(Input& input) override;
         void write(Output& output) const override;
-
-        virtual void compile(Context& context);
 
     protected:
         virtual ~StateGroup();

@@ -18,11 +18,13 @@ namespace vsg
 {
     class Context;
 
-    /// Base class from encapsualting nodes that have Vulkan objects associated with them that will need compiled during the compile traversal
+    /// Base class for encapsulating nodes that have Vulkan objects associated with them that will need compiling during the compile traversal
     class VSG_DECLSPEC Compilable : public Inherit<Node, Compilable>
     {
     public:
         Compilable() {}
+        Compilable(const Compilable& rhs, const CopyOp& copyop = {}) :
+            Inherit(rhs, copyop) {}
 
         virtual void compile(Context& /*context*/){};
     };

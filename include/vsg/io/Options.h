@@ -16,6 +16,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/observer_ptr.h>
 #include <vsg/io/FileSystem.h>
 #include <vsg/maths/transform.h>
+#include <vsg/state/StateCommand.h>
+#include <vsg/utils/Instrumentation.h>
 
 namespace vsg
 {
@@ -25,6 +27,8 @@ namespace vsg
     class OperationThreads;
     class CommandLine;
     class ShaderSet;
+    class FindDynamicObjects;
+    class PropagateDynamicObjects;
 
     using ReaderWriters = std::vector<ref_ptr<ReaderWriter>>;
 
@@ -61,8 +65,8 @@ namespace vsg
         /// Hint to use when searching for Paths with vsg::findFile(filename, options);
         enum FindFileHint
         {
-            CHECK_ORIGINAL_FILENAME_EXISTS_FIRST, /// check the filename exists with it's original path before trying to find it in Options::paths.
-            CHECK_ORIGINAL_FILENAME_EXISTS_LAST,  /// check the filename exists with it's original path after failing to find it in Options::paths.
+            CHECK_ORIGINAL_FILENAME_EXISTS_FIRST, /// check the filename exists with its original path before trying to find it in Options::paths.
+            CHECK_ORIGINAL_FILENAME_EXISTS_LAST,  /// check the filename exists with its original path after failing to find it in Options::paths.
             ONLY_CHECK_PATHS                      /// only check the filename exists in the Options::paths
         };
         FindFileHint checkFilenameHint = CHECK_ORIGINAL_FILENAME_EXISTS_FIRST;
@@ -83,13 +87,26 @@ namespace vsg
         /// Coordinate convention to assume for specified lower case file formats extensions
         std::map<Path, CoordinateConvention> formatCoordinateConventions;
 
-        /// User defined ShaderSet map, loaders should check the available ShaderSet used the name of the type ShaderSet.
+        /// User defined ShaderSet map, loaders should check the available ShaderSet using the name of the type of ShaderSet.
         /// Standard names are :
         ///     "pbr" will substitute for vsg::createPhysicsBasedRenderingShaderSet()
         ///     "phong" will substitute for vsg::createPhongShaderSet()
         ///     "flat" will substitute for vsg::createFlatShadedShaderSet()
         ///     "text" will substitute for vsg::createTextShaderSet()
         std::map<std::string, ref_ptr<ShaderSet>> shaderSets;
+
+        /// specification of any StateCommands that will be provided the parents of any newly created subgraphs
+        /// scene graph creation routines can use the inherited state information to avoid setting state in the local subgraph.
+        StateCommands inheritedState;
+
+        /// Hook for assigning Instrumentation to enable profiling of record traversal.
+        ref_ptr<Instrumentation> instrumentation;
+
+        /// mechanism for finding dynamic objects in loaded scene graph
+        ref_ptr<FindDynamicObjects> findDynamicObjects;
+
+        /// mechanism for propogating dynamic objects classification up parental chain so that cloning is done on all dynamic objects to avoid sharing of dyanmic parts.
+        ref_ptr<PropagateDynamicObjects> propagateDynamicObjects;
 
     protected:
         virtual ~Options();

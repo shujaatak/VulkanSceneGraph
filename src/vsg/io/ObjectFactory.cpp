@@ -32,6 +32,7 @@ ObjectFactory::ObjectFactory()
 
     // values
     add<vsg::stringValue>();
+    add<vsg::wstringValue>();
     add<vsg::boolValue>();
     add<vsg::intValue>();
     add<vsg::uintValue>();
@@ -180,14 +181,22 @@ ObjectFactory::ObjectFactory()
     add<vsg::VertexIndexDraw>();
     add<vsg::Bin>();
     add<vsg::DepthSorted>();
+    add<vsg::Layer>();
     add<vsg::Switch>();
+    add<vsg::TileDatabase>();
+    add<vsg::TileDatabaseSettings>();
+    add<vsg::InstrumentationNode>();
+
+    // lighting
     add<vsg::Light>();
     add<vsg::AmbientLight>();
     add<vsg::DirectionalLight>();
     add<vsg::PointLight>();
     add<vsg::SpotLight>();
-    add<vsg::TileDatabase>();
-    add<vsg::TileDatabaseSettings>();
+    add<vsg::ShadowSettings>();
+    add<vsg::HardShadows>();
+    add<vsg::SoftShadows>();
+    add<vsg::PercentageCloserSoftShadows>();
 
     // vulkan objects
     add<vsg::BindGraphicsPipeline>();
@@ -213,6 +222,7 @@ ObjectFactory::ObjectFactory()
     add<vsg::BindDescriptorSets>();
     add<vsg::BindDescriptorSet>();
     add<vsg::BindVertexBuffers>();
+    add<vsg::DescriptorTexelBufferView>();
     add<vsg::BindIndexBuffer>();
     add<vsg::BindViewDescriptorSets>();
     add<vsg::DescriptorSet>();
@@ -238,6 +248,8 @@ ObjectFactory::ObjectFactory()
     add<vsg::EndQuery>();
     add<vsg::ResetQueryPool>();
     add<vsg::CopyQueryPoolResults>();
+    add<vsg::SetPrimitiveTopology>();
+    add<vsg::ClearAttachments>();
 
     // text
     add<vsg::GlyphMetricsArray>();
@@ -275,11 +287,24 @@ ObjectFactory::ObjectFactory()
     add<vsg::Camera>();
     add<vsg::LookAt>();
     add<vsg::Perspective>();
+    add<vsg::EllipsoidPerspective>();
+    add<vsg::EllipsoidModel>();
+    add<vsg::Orthographic>();
 
     // mesh shading
     add<vsg::DrawMeshTasks>();
     add<vsg::DrawMeshTasksIndirect>();
     add<vsg::DrawMeshTasksIndirectCount>();
+
+    // animation
+    add<vsg::TransformKeyframes>();
+    add<vsg::TransformSampler>();
+    add<vsg::MorphKeyframes>();
+    add<vsg::MorphSampler>();
+    add<vsg::JointSampler>();
+    add<vsg::Animation>();
+    add<vsg::AnimationGroup>();
+    add<vsg::Joint>();
 
     // io
     add<vsg::Options>();
@@ -290,13 +315,14 @@ ObjectFactory::ObjectFactory()
     add<vsg::NullArrayState>();
 
     // utils
-    add<vsg::AnimationPath>();
     add<vsg::ShaderSet>();
+    add<vsg::ViewDependentStateBinding>();
     add<vsg::PositionAndDisplacementMapArrayState>();
     add<vsg::DisplacementMapArrayState>();
     add<vsg::PositionArrayState>();
     add<vsg::BillboardArrayState>();
     add<vsg::SharedObjects>();
+    add<vsg::ProfileLog>();
 
     // application
     add<vsg::EllipsoidModel>();
@@ -314,6 +340,6 @@ vsg::ref_ptr<vsg::Object> ObjectFactory::create(const std::string& className)
         return (itr->second)();
     }
 
-    warn("ObjectFactory::create(", className, ") failed to find means to create object");
+    warn("ObjectFactory::create(", className, ") failed to find means to create object.");
     return vsg::ref_ptr<vsg::Object>();
 }

@@ -12,7 +12,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-// we can't implement the anonymous union/structs combination without causing warnings, so disabled them for just this header
+// we can't implement the anonymous union/structs combination without causing warnings, so disable them for just this header
 #if defined(__GNUC__)
 #    pragma GCC diagnostic push
 #    pragma GCC diagnostic ignored "-Wpedantic"
@@ -67,7 +67,7 @@ namespace vsg
             value{normal.x, normal.y, normal.z, in_p} {}
 
         constexpr t_plane(const normal_type& position, const normal_type& normal) :
-            value{normal.x, normal.y, normal.z, -(position * normal)} {}
+            value{normal.x, normal.y, normal.z, -dot(position, normal)} {}
 
         template<typename R>
         constexpr explicit t_plane(const t_plane<R>& v) :
@@ -115,6 +115,30 @@ namespace vsg
     VSG_type_name(vsg::dplane);
 
     template<typename T>
+    constexpr bool operator==(const t_plane<T>& lhs, const t_plane<T>& rhs)
+    {
+        return lhs[0] == rhs[0] && lhs[1] == rhs[1] && lhs[2] == rhs[2] && lhs[3] == rhs[3];
+    }
+
+    template<typename T>
+    constexpr bool operator!=(const t_plane<T>& lhs, const t_plane<T>& rhs)
+    {
+        return lhs[0] != rhs[0] || lhs[1] != rhs[1] || lhs[2] != rhs[2] || lhs[3] != rhs[3];
+    }
+
+    template<typename T>
+    constexpr bool operator<(const t_plane<T>& lhs, const t_plane<T>& rhs)
+    {
+        if (lhs[0] < rhs[0]) return true;
+        if (lhs[0] > rhs[0]) return false;
+        if (lhs[1] < rhs[1]) return true;
+        if (lhs[1] > rhs[1]) return false;
+        if (lhs[2] < rhs[2]) return true;
+        if (lhs[2] > rhs[2]) return false;
+        return lhs[3] < rhs[3];
+    }
+
+    template<typename T>
     constexpr T distance(const t_plane<T>& pl, const t_vec3<T>& v)
     {
         return dot(pl.n, v) + pl.p;
@@ -127,7 +151,7 @@ namespace vsg
         return dot(pl.n, normal_type(v)) + pl.p;
     }
 
-    /** return true if bounding sphere is wholly or partially intersects with convex polytope defined by a list of planes with normals pointing inwards towards center of the polytope. */
+    /** return true if bounding sphere wholly or partially intersects with convex polytope defined by a list of planes with normals pointing inwards towards center of the polytope. */
     template<class PlaneItr, typename T>
     constexpr bool intersect(PlaneItr first, PlaneItr last, const t_sphere<T>& s)
     {

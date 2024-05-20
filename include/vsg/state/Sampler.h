@@ -17,6 +17,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 namespace vsg
 {
+    // forward declare
     class Context;
 
     /// Sampler encapsulates the VkSampler and the VkSamplerCreateInfo settings used to set it up.
@@ -46,15 +47,16 @@ namespace vsg
         // Vulkan VkSampler handle
         VkSampler vk(uint32_t deviceID) const { return _implementation[deviceID]->_sampler; }
 
-        int compare(const Object& rhs_object) const override;
-
-        void read(Input& input) override;
-        void write(Output& output) const override;
-
         void compile(Context& context);
 
         void release(uint32_t deviceID) { _implementation[deviceID] = {}; }
         void release() { _implementation.clear(); }
+
+    public:
+        int compare(const Object& rhs_object) const override;
+
+        void read(Input& input) override;
+        void write(Output& output) const override;
 
     protected:
         virtual ~Sampler();

@@ -280,11 +280,12 @@ macro(vsg_add_target_clobber)
         else()
             if (NOT TARGET clobber)
                 add_custom_target(clobber)
+                set_target_properties(clobber PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD TRUE)
             endif()
             add_custom_target(clobber-${PROJECT_NAME}
                 COMMAND ${GIT_EXECUTABLE} -C ${PROJECT_SOURCE_DIR} clean -d -f -x
             )
-            set_target_properties(clobber-${PROJECT_NAME} PROPERTIES FOLDER "${PROJECT_NAME} Folder")
+            set_target_properties(clobber-${PROJECT_NAME} PROPERTIES FOLDER "${PROJECT_NAME} Folder" EXCLUDE_FROM_DEFAULT_BUILD TRUE)
             add_dependencies(clobber clobber-${PROJECT_NAME})
         endif()
     endif()
@@ -401,11 +402,12 @@ macro(vsg_add_target_uninstall)
     endif()
     if (NOT TARGET uninstall)
         add_custom_target(uninstall)
+        set_target_properties(uninstall PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD TRUE)
     endif()
     add_custom_target(uninstall-${PROJECT_NAME}
         COMMAND ${CMAKE_COMMAND} -P ${DIR}/uninstall.cmake
     )
-    set_target_properties(uninstall-${PROJECT_NAME} PROPERTIES FOLDER "${PROJECT_NAME} Folder")
+    set_target_properties(uninstall-${PROJECT_NAME} PROPERTIES FOLDER "${PROJECT_NAME} Folder" EXCLUDE_FROM_DEFAULT_BUILD TRUE)
     add_dependencies(uninstall uninstall-${PROJECT_NAME})
 endmacro()
 
@@ -426,7 +428,7 @@ macro(vsg_check_min_vulkan_header_version _min_version)
           file(STRINGS  ${VULKAN_CORE_H} VulkanHeaderVersionLine2 REGEX "^#define VK_HEADER_VERSION_COMPLETE ")
           string(REGEX MATCHALL "[0-9]+" VulkanHeaderVersion2 "${VulkanHeaderVersionLine2}")
           list(LENGTH VulkanHeaderVersion2 _len)
-          #  versions >= 1.2.175 adds an additional numbers in front of e.g. '0, 1, 2' instead of '1, 2'
+          #  versions >= 1.2.175 add an additional number in front e.g. '0, 1, 2' instead of '1, 2'
           if(_len EQUAL 3)
               list(REMOVE_AT VulkanHeaderVersion2 0)
           endif()

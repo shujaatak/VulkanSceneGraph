@@ -18,14 +18,14 @@ using namespace vsg;
 
 void Keyboard::apply(KeyPressEvent& keyPress)
 {
-    //std::cout<<"Keyboard::apply(KeyReleaseEvent& keyRelease)"<<std::endl;
+    //std::cout<<"Keyboard::apply(KeyPressEvent& keyPress)"<<std::endl;
 
     auto keyState_itr = keyState.find(keyPress.keyBase);
     if (keyState_itr != keyState.end())
     {
         auto& keyHistory = keyState_itr->second;
         keyHistory.handled = keyPress.handled;
-        if (keyHistory.timeOfKeyRelease == keyPress.time)
+        if (keyHistory.timeOfKeyRelease == keyPress.time || keyHistory.timeOfKeyRelease <= keyHistory.timeOfLastKeyPress)
         {
             keyHistory.timeOfKeyRelease = keyHistory.timeOfFirstKeyPress;
             keyHistory.timeOfLastKeyPress = keyPress.time;

@@ -16,6 +16,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/io/Options.h>
 
 #include <algorithm>
+#include <cstddef>
 
 using namespace vsg;
 
@@ -23,29 +24,26 @@ using namespace vsg;
 //
 // vsg::Allocator
 //
-Allocator::Allocator(std::unique_ptr<Allocator> in_nestedAllocator) :
-    nestedAllocator(std::move(in_nestedAllocator))
+Allocator::Allocator(size_t in_default_alignment) :
+    default_alignment(in_default_alignment)
 {
-    if (memoryTracking & MEMORY_TRACKING_REPORT_ACTIONS)
-    {
-        info("Allocator()", this);
-    }
-
     allocatorMemoryBlocks.resize(vsg::ALLOCATOR_AFFINITY_LAST);
 
     size_t Megabyte = 1024 * 1024;
+    allocatorMemoryBlocks[vsg::ALLOCATOR_AFFINITY_OBJECTS].reset(new MemoryBlocks(this, "MemoryBlocks_OBJECTS", size_t(Megabyte), default_alignment));
+    allocatorMemoryBlocks[vsg::ALLOCATOR_AFFINITY_DATA].reset(new MemoryBlocks(this, "MemoryBlocks_DATA", size_t(16 * Megabyte), default_alignment));
+    allocatorMemoryBlocks[vsg::ALLOCATOR_AFFINITY_NODES].reset(new MemoryBlocks(this, "MemoryBlocks_NODES", size_t(Megabyte), default_alignment));
+    allocatorMemoryBlocks[vsg::ALLOCATOR_AFFINITY_PHYSICS].reset(new MemoryBlocks(this, "MemoryBlocks_PHYSICS", size_t(Megabyte), 16));
+}
 
-    allocatorMemoryBlocks[vsg::ALLOCATOR_AFFINITY_OBJECTS].reset(new MemoryBlocks(this, "MemoryBlocks_OBJECTS", size_t(Megabyte)));
-    allocatorMemoryBlocks[vsg::ALLOCATOR_AFFINITY_DATA].reset(new MemoryBlocks(this, "MemoryBlocks_DATA", size_t(16 * Megabyte)));
-    allocatorMemoryBlocks[vsg::ALLOCATOR_AFFINITY_NODES].reset(new MemoryBlocks(this, "MemoryBlocks_NODES", size_t(Megabyte)));
+Allocator::Allocator(std::unique_ptr<Allocator> in_nestedAllocator, size_t in_default_alignment) :
+    Allocator(in_default_alignment)
+{
+    nestedAllocator = std::move(in_nestedAllocator);
 }
 
 Allocator::~Allocator()
 {
-    if (memoryTracking & MEMORY_TRACKING_REPORT_ACTIONS)
-    {
-        info("~Allocator() ", this);
-    }
 }
 
 std::unique_ptr<Allocator>& Allocator::instance()
@@ -94,16 +92,7 @@ void* Allocator::allocate(std::size_t size, AllocatorAffinity allocatorAffinity)
 {
     std::scoped_lock<std::mutex> lock(mutex);
 
-    if (allocatorType == ALLOCATOR_TYPE_NEW_DELETE)
-    {
-        return operator new(size);
-    }
-    else if (allocatorType == ALLOCATOR_TYPE_MALLOC_FREE)
-    {
-        return std::malloc(size);
-    }
-
-    // create an MemoryBlocks entry if one doesn't already exist
+    // create a MemoryBlocks entry if one doesn't already exist
     if (allocatorAffinity > allocatorMemoryBlocks.size())
     {
         if (memoryTracking & MEMORY_TRACKING_REPORT_ACTIONS)
@@ -115,7 +104,7 @@ void* Allocator::allocate(std::size_t size, AllocatorAffinity allocatorAffinity)
         size_t blockSize = 1024 * 1024; // Megabyte
 
         allocatorMemoryBlocks.resize(allocatorAffinity + 1);
-        allocatorMemoryBlocks[allocatorAffinity].reset(new MemoryBlocks(this, name, blockSize));
+        allocatorMemoryBlocks[allocatorAffinity].reset(new MemoryBlocks(this, name, blockSize, default_alignment));
     }
 
     auto& memoryBlocks = allocatorMemoryBlocks[allocatorAffinity];
@@ -231,7 +220,7 @@ Allocator::MemoryBlocks* Allocator::getMemoryBlocks(AllocatorAffinity allocatorA
     return {};
 }
 
-Allocator::MemoryBlocks* Allocator::getOrCreateMemoryBlocks(AllocatorAffinity allocatorAffinity, const std::string& name, size_t blockSize)
+Allocator::MemoryBlocks* Allocator::getOrCreateMemoryBlocks(AllocatorAffinity allocatorAffinity, const std::string& name, size_t blockSize, size_t alignment)
 {
     std::scoped_lock<std::mutex> lock(mutex);
 
@@ -239,11 +228,12 @@ Allocator::MemoryBlocks* Allocator::getOrCreateMemoryBlocks(AllocatorAffinity al
     {
         allocatorMemoryBlocks[allocatorAffinity]->name = name;
         allocatorMemoryBlocks[allocatorAffinity]->blockSize = blockSize;
+        allocatorMemoryBlocks[allocatorAffinity]->alignment = alignment;
     }
     else
     {
         allocatorMemoryBlocks.resize(allocatorAffinity + 1);
-        allocatorMemoryBlocks[allocatorAffinity].reset(new MemoryBlocks(this, name, blockSize));
+        allocatorMemoryBlocks[allocatorAffinity].reset(new MemoryBlocks(this, name, blockSize, alignment));
     }
     return allocatorMemoryBlocks[allocatorAffinity].get();
 }
@@ -261,7 +251,7 @@ void Allocator::setBlockSize(AllocatorAffinity allocatorAffinity, size_t blockSi
         auto name = make_string("MemoryBlocks_", allocatorAffinity);
 
         allocatorMemoryBlocks.resize(allocatorAffinity + 1);
-        allocatorMemoryBlocks[allocatorAffinity].reset(new MemoryBlocks(this, name, blockSize));
+        allocatorMemoryBlocks[allocatorAffinity].reset(new MemoryBlocks(this, name, blockSize, default_alignment));
     }
 }
 
@@ -284,18 +274,14 @@ void Allocator::setMemoryTracking(int mt)
 //
 // vsg::Allocator::MemoryBlock
 //
-Allocator::MemoryBlock::MemoryBlock(size_t blockSize, int memoryTracking, AllocatorType in_allocatorType) :
+Allocator::MemoryBlock::MemoryBlock(size_t blockSize, int memoryTracking, size_t in_alignment) :
     memorySlots(blockSize, memoryTracking),
-    allocatorType(in_allocatorType)
+    alignment(in_alignment)
 {
-    if (allocatorType == ALLOCATOR_TYPE_NEW_DELETE)
-    {
-        memory = static_cast<uint8_t*>(operator new(blockSize));
-    }
-    else
-    {
-        memory = static_cast<uint8_t*>(std::malloc(blockSize));
-    }
+    block_alignment = std::max(alignment, alignof(std::max_align_t));
+    block_alignment = std::max(block_alignment, size_t{16});
+
+    memory = static_cast<uint8_t*>(operator new (blockSize, std::align_val_t{block_alignment}));
 
     if (memorySlots.memoryTracking & MEMORY_TRACKING_REPORT_ACTIONS)
     {
@@ -310,19 +296,12 @@ Allocator::MemoryBlock::~MemoryBlock()
         info("MemoryBlock::~MemoryBlock(", memorySlots.totalMemorySize(), ") freed memory");
     }
 
-    if (allocatorType == ALLOCATOR_TYPE_NEW_DELETE)
-    {
-        operator delete(memory);
-    }
-    else
-    {
-        std::free(memory);
-    }
+    operator delete (memory, std::align_val_t{block_alignment});
 }
 
 void* Allocator::MemoryBlock::allocate(std::size_t size)
 {
-    auto [allocated, offset] = memorySlots.reserve(size, 4);
+    auto [allocated, offset] = memorySlots.reserve(size, alignment);
     if (allocated)
         return memory + offset;
     else
@@ -350,10 +329,11 @@ bool Allocator::MemoryBlock::deallocate(void* ptr, std::size_t size)
 //
 // vsg::Allocator::MemoryBlocks
 //
-Allocator::MemoryBlocks::MemoryBlocks(Allocator* in_parent, const std::string& in_name, size_t in_blockSize) :
+Allocator::MemoryBlocks::MemoryBlocks(Allocator* in_parent, const std::string& in_name, size_t in_blockSize, size_t in_alignment) :
     parent(in_parent),
     name(in_name),
-    blockSize(in_blockSize)
+    blockSize(in_blockSize),
+    alignment(in_alignment)
 {
     if (parent->memoryTracking & MEMORY_TRACKING_REPORT_ACTIONS)
     {
@@ -390,7 +370,7 @@ void* Allocator::MemoryBlocks::allocate(std::size_t size)
 
     size_t new_blockSize = std::max(size, blockSize);
 
-    auto block = std::make_shared<MemoryBlock>(new_blockSize, parent->memoryTracking, parent->memoryBlocksAllocatorType);
+    auto block = std::make_shared<MemoryBlock>(new_blockSize, parent->memoryTracking, alignment);
     latestMemoryBlock = block;
 
     auto ptr = block->allocate(size);

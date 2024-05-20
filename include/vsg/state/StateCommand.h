@@ -17,13 +17,16 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// Base class for Vulkan commands associated with state, such as binding graphics pipelines and descriptors sets (textures and uniforms).
-    /// StateCommands can be attached directly as nodes in the scene graph, or more typically assigned to StateGroup node to enable push/popping of state.
+    /// Base class for Vulkan commands associated with state, such as binding graphics
+    /// pipelines and descriptor sets for textures, uniform buffers and storage buffers.
+    /// StateCommands can be attached directly as nodes in the scene graph, or more typically assigned to StateGroup nodes to enable push/popping of state.
     class VSG_DECLSPEC StateCommand : public Inherit<Command, StateCommand>
     {
     public:
         StateCommand(uint32_t in_slot = 0) :
             slot(in_slot) {}
+
+        StateCommand(const StateCommand& rhs, const CopyOp& copyop);
 
         int compare(const Object& rhs_object) const override;
 
@@ -36,5 +39,7 @@ namespace vsg
         virtual ~StateCommand() {}
     };
     VSG_type_name(vsg::StateCommand);
+
+    using StateCommands = std::vector<ref_ptr<StateCommand>, allocator_affinity_nodes<ref_ptr<StateCommand>>>;
 
 } // namespace vsg

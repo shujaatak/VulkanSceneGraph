@@ -21,7 +21,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/ui/PointerEvent.h>
 #include <vsg/ui/TouchEvent.h>
 #include <vsg/ui/ScrollWheelEvent.h>
-#include <vsg/vk/Extensions.h>
 
 #include <time.h>
 
@@ -76,10 +75,10 @@ namespace vsg
 - (void)makeKeyAndVisible
 {
     [super makeKeyAndVisible];
-    
+
     vsg_iOS_Window* nWindow = self;
     _traits->nativeWindow = nWindow;
-    
+
     vsg::ref_ptr<vsg::Window> w = vsg::Window::create(_traits);
     ((vsg_iOS_ViewController*)self.rootViewController).vsgWindow = w;
     _vsgViewer->addWindow(w);
@@ -249,7 +248,7 @@ namespace vsgiOS
             surfaceCreateInfo.pNext = nullptr;
             surfaceCreateInfo.flags = 0;
             surfaceCreateInfo.pLayer = caMetalLayer;
-            
+
             auto res = vkCreateMetalSurfaceEXT(*instance, &surfaceCreateInfo, _instance->getAllocationCallbacks(), &_surface);
             if (res != VK_SUCCESS || _surface == VK_NULL_HANDLE)
                 vsg::error("Failed creating VkSurface");
@@ -267,13 +266,13 @@ vsgiOS::iOS_Window::iOS_Window(vsg::ref_ptr<vsg::WindowTraits> traits)
     _view->_traits = _traits;
     _keyboard = new KeyboardMap;
     _metalLayer = (CAMetalLayer*) _view.layer;
-    
+
     uint32_t finalwidth = traits->width * devicePixelScale;
     uint32_t finalheight = traits->height * devicePixelScale;
-    
+
     _extent2D.width = finalwidth;
     _extent2D.height = finalheight;
-    
+
     // manually trigger configure here??
     vsg::clock::time_point event_time = vsg::clock::now();
     _bufferedEvents.emplace_back(new vsg::ConfigureWindowEvent(this, event_time, _traits->x, _traits->y, finalwidth, finalheight));
@@ -527,7 +526,7 @@ vsgiOS::KeyboardMap::KeyboardMap()
 
         /*
     * Auxiliary Functions; note the duplicate definitions for left and right
-    * function keys;  Sun keyboards and a few other manufactures have such
+    * function keys;  Sun keyboards and a few other manufacturers have such
     * function key groups on the left and/or right sides of the keyboard.
     * We've not found a keyboard with more than 35 function keys total.
     */
@@ -643,7 +642,7 @@ bool vsgiOS::iOS_Window::handleUIEvent(UIEvent* anEvent)
 {
     switch([anEvent type])
     {
-        
+
 //        // mouse events
 //        case UIEventTypeMouseMoved:
 //        case UIEventTypeLeftMouseDown:

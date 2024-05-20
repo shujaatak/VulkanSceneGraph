@@ -15,7 +15,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/io/Options.h>
 #include <vsg/platform/win32/Win32_Window.h>
 #include <vsg/ui/ScrollWheelEvent.h>
-#include <vsg/vk/Extensions.h>
 
 using namespace vsg;
 using namespace vsgWin32;
@@ -45,6 +44,10 @@ namespace vsgWin32
             surfaceCreateInfo.pNext = nullptr;
 
             auto result = vkCreateWin32SurfaceKHR(*instance, &surfaceCreateInfo, _instance->getAllocationCallbacks(), &_surface);
+            if (result != VK_SUCCESS)
+            {
+                throw Exception{"Failed to created Win32Surface.", result};
+            }
         }
     };
 
@@ -52,7 +55,12 @@ namespace vsgWin32
     LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
         Win32_Window* win = reinterpret_cast<Win32_Window*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-        if (win != nullptr) return win->handleWin32Messages(msg, wParam, lParam);
+        if (win != nullptr)
+        {
+            win->handleWin32Messages(msg, wParam, lParam);
+            // should we return 0 here if handleWin32Messages returns true and not call ::DefWindowProc(..);
+            // for now will keep the original behavior and always call ::DefWindowProc(..);
+        }
         return ::DefWindowProc(hwnd, msg, wParam, lParam);
     }
 
@@ -361,7 +369,7 @@ Win32_Window::Win32_Window(vsg::ref_ptr<WindowTraits> traits) :
 
         // assume a traits->screenNum of < 0 will default to screen 0
         int32_t screenNum = traits->screenNum < 0 ? 0 : traits->screenNum;
-        if (screenNum >= displayDevices.size()) throw Exception{"Error: vsg::Win32_Window::Win32_Window(...) failed to create Window, screenNum is out of range.", VK_ERROR_INVALID_EXTERNAL_HANDLE};
+        if (screenNum >= static_cast<int32_t>(displayDevices.size())) throw Exception{"Error: vsg::Win32_Window::Win32_Window(...) failed to create Window, screenNum is out of range.", VK_ERROR_INVALID_EXTERNAL_HANDLE};
 
         DEVMODE deviceMode;
         deviceMode.dmSize = sizeof(deviceMode);
@@ -434,17 +442,16 @@ Win32_Window::Win32_Window(vsg::ref_ptr<WindowTraits> traits) :
         SetFocus(_window);
     }
 
-    // get client rect to find final width height of the view
+    // get client rect to find final width and height of the view
     RECT clientRect;
     ::GetClientRect(_window, &clientRect);
 
     uint32_t finalWidth = clientRect.right - clientRect.left;
     uint32_t finalHeight = clientRect.bottom - clientRect.top;
 
-    if (traits->shareWindow)
+    if (traits->device)
     {
-        // share the _instance, _physicalDevice and _device;
-        share(*traits->shareWindow);
+        share(traits->device);
     }
 
     _extent2D.width = finalWidth;
@@ -490,6 +497,11 @@ bool Win32_Window::visible() const
     return _window != 0 && _windowMapped;
 }
 
+void Win32_Window::releaseWindow()
+{
+    _window = {};
+}
+
 bool Win32_Window::pollEvents(vsg::UIEvents& events)
 {
     vsg::clock::time_point event_time = vsg::clock::now();
@@ -524,7 +536,7 @@ void Win32_Window::resize()
     buildSwapchain();
 }
 
-LRESULT Win32_Window::handleWin32Messages(UINT msg, WPARAM wParam, LPARAM lParam)
+bool Win32_Window::handleWin32Messages(UINT msg, WPARAM wParam, LPARAM lParam)
 {
     vsg::clock::time_point event_time = vsg::clock::now();
 
@@ -542,58 +554,59 @@ LRESULT Win32_Window::handleWin32Messages(UINT msg, WPARAM wParam, LPARAM lParam
     case WM_CLOSE:
         vsg::debug("close window");
         bufferedEvents.emplace_back(vsg::CloseWindowEvent::create(this, event_time));
-        break;
+        return true;
     case WM_SHOWWINDOW:
         bufferedEvents.emplace_back(vsg::ExposeWindowEvent::create(this, event_time, winx, winy, winw, winh));
-        break;
+        return true;
     case WM_DESTROY:
         _windowMapped = false;
-        break;
+        return true;
     case WM_PAINT:
         ValidateRect(_window, NULL);
-        break;
+        return true;
     case WM_MOUSEMOVE: {
         int32_t mx = GET_X_LPARAM(lParam);
         int32_t my = GET_Y_LPARAM(lParam);
 
         bufferedEvents.emplace_back(vsg::MoveEvent::create(this, event_time, mx, my, getButtonMask(wParam)));
+        return true;
     }
     break;
     case WM_LBUTTONDOWN:
     case WM_MBUTTONDOWN:
-    case WM_RBUTTONDOWN: {
+    case WM_RBUTTONDOWN:
+    case WM_XBUTTONDOWN:
+    case WM_LBUTTONDBLCLK:
+    case WM_MBUTTONDBLCLK:
+    case WM_RBUTTONDBLCLK:
+    case WM_XBUTTONDBLCLK: {
         int32_t mx = GET_X_LPARAM(lParam);
         int32_t my = GET_Y_LPARAM(lParam);
 
-        bufferedEvents.emplace_back(vsg::ButtonPressEvent::create(this, event_time, mx, my, getButtonMask(wParam), getButtonDownEventDetail(msg)));
-
+        bufferedEvents.emplace_back(vsg::ButtonPressEvent::create(this, event_time, mx, my, getButtonMask(wParam), getButtonDownEventDetail(msg, HIWORD(wParam))));
         //::SetCapture(_window);
+        return true;
     }
     break;
     case WM_LBUTTONUP:
     case WM_MBUTTONUP:
-    case WM_RBUTTONUP: {
+    case WM_RBUTTONUP:
+    case WM_XBUTTONUP: {
         int32_t mx = GET_X_LPARAM(lParam);
         int32_t my = GET_Y_LPARAM(lParam);
 
-        bufferedEvents.emplace_back(vsg::ButtonReleaseEvent::create(this, event_time, mx, my, getButtonMask(wParam), getButtonUpEventDetail(msg)));
-
+        bufferedEvents.emplace_back(vsg::ButtonReleaseEvent::create(this, event_time, mx, my, getButtonMask(wParam), getButtonUpEventDetail(msg, HIWORD(wParam))));
         //::ReleaseCapture(); // should only release once all mouse buttons are released ??
-        break;
-    }
-    case WM_LBUTTONDBLCLK:
-    case WM_MBUTTONDBLCLK:
-    case WM_RBUTTONDBLCLK: {
-        //::SetCapture(_window);
+        return true;
     }
     break;
     case WM_MOUSEWHEEL: {
         bufferedEvents.emplace_back(vsg::ScrollWheelEvent::create(this, event_time, GET_WHEEL_DELTA_WPARAM(wParam) < 0 ? vec3(0.0f, -1.0f, 0.0f) : vec3(0.0f, 1.0f, 0.0f)));
-        break;
+        return true;
     }
     case WM_MOVE: {
         bufferedEvents.emplace_back(vsg::ConfigureWindowEvent::create(this, event_time, winx, winy, winw, winh));
-        break;
+        return true;
     }
     case WM_SIZE: {
         if (wParam == SIZE_MINIMIZED || wParam == SIZE_MAXHIDE || winw == 0 || winh == 0)
@@ -605,7 +618,7 @@ LRESULT Win32_Window::handleWin32Messages(UINT msg, WPARAM wParam, LPARAM lParam
             _windowMapped = true;
             bufferedEvents.emplace_back(vsg::ConfigureWindowEvent::create(this, event_time, winx, winy, winw, winh));
         }
-        break;
+        return true;
     }
     case WM_EXITSIZEMOVE:
         break;
@@ -618,7 +631,7 @@ LRESULT Win32_Window::handleWin32Messages(UINT msg, WPARAM wParam, LPARAM lParam
             int32_t repeatCount = (lParam & 0xffff);
             bufferedEvents.emplace_back(vsg::KeyPressEvent::create(this, event_time, keySymbol, modifiedKeySymbol, keyModifier, repeatCount));
         }
-        break;
+        return true;
     }
     case WM_KEYUP:
     case WM_SYSKEYUP: {
@@ -628,21 +641,18 @@ LRESULT Win32_Window::handleWin32Messages(UINT msg, WPARAM wParam, LPARAM lParam
         {
             bufferedEvents.emplace_back(vsg::KeyReleaseEvent::create(this, event_time, keySymbol, modifiedKeySymbol, keyModifier, 0));
         }
-
-        break;
+        return true;
     }
     case WM_SETFOCUS: {
-        vsg::clock::time_point event_time = vsg::clock::now();
         bufferedEvents.emplace_back(vsg::FocusInEvent::create(this, event_time));
-        break;
+        return true;
     }
     case WM_KILLFOCUS: {
-        vsg::clock::time_point event_time = vsg::clock::now();
         bufferedEvents.emplace_back(vsg::FocusOutEvent::create(this, event_time));
-        break;
+        return true;
     }
     default:
         break;
     }
-    return ::DefWindowProc(_window, msg, wParam, lParam);
+    return false;
 }

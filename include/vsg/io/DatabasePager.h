@@ -12,16 +12,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/app/CompileManager.h>
 #include <vsg/core/Inherit.h>
 #include <vsg/core/observer_ptr.h>
 #include <vsg/io/FileSystem.h>
 #include <vsg/io/Options.h>
-
 #include <vsg/nodes/PagedLOD.h>
-
 #include <vsg/threading/ActivityStatus.h>
-
-#include <vsg/app/CompileManager.h>
+#include <vsg/utils/Instrumentation.h>
 
 #include <condition_variable>
 #include <list>
@@ -96,8 +94,6 @@ namespace vsg
 
         virtual void updateSceneGraph(FrameStamp* frameStamp, CompileResult& cr);
 
-        ref_ptr<const Options> options;
-
         ref_ptr<CompileManager> compileManager;
 
         std::atomic_uint numActiveRequests{0};
@@ -105,12 +101,18 @@ namespace vsg
 
         ref_ptr<CulledPagedLODs> culledPagedLODs;
 
-        /// for systems for smaller GPU memory limits you may need to reduce the targetMaxNumPagedLODWithHighResSubgraphs to keep memory usage within available limits.
+        /// for systems with smaller GPU memory limits you may need to reduce the targetMaxNumPagedLODWithHighResSubgraphs to keep memory usage within available limits.
         uint32_t targetMaxNumPagedLODWithHighResSubgraphs = 1500;
 
         std::mutex pendingPagedLODMutex;
 
         ref_ptr<PagedLODContainer> pagedLODContainer;
+
+        /// Hook for assigning Instrumentation to enable profiling
+        ref_ptr<Instrumentation> instrumentation;
+
+        /// assign Instrumentation to all CompileTraversal and their associated Context
+        void assignInstrumentation(ref_ptr<Instrumentation> in_instrumentation);
 
     protected:
         virtual ~DatabasePager();

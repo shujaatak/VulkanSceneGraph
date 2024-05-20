@@ -21,6 +21,8 @@ using namespace vsg;
 TransferTask::TransferTask(Device* in_device, uint32_t numBuffers) :
     device(in_device)
 {
+    CPU_INSTRUMENTATION_L1(instrumentation);
+
     _currentFrameIndex = numBuffers; // numBuffers is used to signify unset value
     for (uint32_t i = 0; i < numBuffers; ++i)
     {
@@ -28,14 +30,14 @@ TransferTask::TransferTask(Device* in_device, uint32_t numBuffers) :
     }
 
     _frames.resize(numBuffers);
-    for (uint32_t i = 0; i < numBuffers; ++i)
-    {
-        _frames[i].fence = vsg::Fence::create(device);
-    }
+
+    //level = Logger::LOGGER_INFO;
 }
 
 void TransferTask::advance()
 {
+    CPU_INSTRUMENTATION_L1(instrumentation);
+
     if (_currentFrameIndex >= _indices.size())
     {
         // first frame so set to 0
@@ -62,13 +64,6 @@ size_t TransferTask::index(size_t relativeFrameIndex) const
     return relativeFrameIndex < _indices.size() ? _indices[relativeFrameIndex] : _indices.size();
 }
 
-/// fence() and fence(0) return the Fence for the frame currently being rendered, fence(1) return the previous frame's Fence etc.
-Fence* TransferTask::fence(size_t relativeFrameIndex)
-{
-    size_t i = index(relativeFrameIndex);
-    return i < _frames.size() ? _frames[i].fence.get() : nullptr;
-}
-
 bool TransferTask::containsDataToTransfer() const
 {
     return !_dynamicDataMap.empty() || !_dynamicImageInfoSet.empty();
@@ -76,12 +71,16 @@ bool TransferTask::containsDataToTransfer() const
 
 void TransferTask::assign(const ResourceRequirements::DynamicData& dynamicData)
 {
+    CPU_INSTRUMENTATION_L1(instrumentation);
+
     assign(dynamicData.bufferInfos);
     assign(dynamicData.imageInfos);
 }
 
 void TransferTask::assign(const BufferInfoList& bufferInfoList)
 {
+    CPU_INSTRUMENTATION_L1(instrumentation);
+
     for (auto& bufferInfo : bufferInfoList)
     {
         _dynamicDataMap[bufferInfo->buffer][bufferInfo->offset] = bufferInfo;
@@ -108,8 +107,7 @@ void TransferTask::assign(const BufferInfoList& bufferInfoList)
 
 void TransferTask::_transferBufferInfos(VkCommandBuffer vk_commandBuffer, Frame& frame, VkDeviceSize& offset)
 {
-    Logger::Level level = Logger::LOGGER_DEBUG;
-    //level = Logger::LOGGER_INFO;
+    CPU_INSTRUMENTATION_L1(instrumentation);
 
     auto deviceID = device->deviceID;
     auto& staging = frame.staging;
@@ -152,7 +150,16 @@ void TransferTask::_transferBufferInfos(VkCommandBuffer vk_commandBuffer, Frame&
                     VkDeviceSize endOfEntry = offset + bufferInfo->range;
                     offset = (/*alignment == 1 ||*/ (endOfEntry % alignment) == 0) ? endOfEntry : ((endOfEntry / alignment) + 1) * alignment;
                 }
-                ++bufferInfo_itr;
+
+                if (bufferInfo->data->properties.dataVariance == STATIC_DATA)
+                {
+                    log(level, "       removing copied static data: ", bufferInfo, ", ", bufferInfo->data);
+                    bufferInfo_itr = bufferInfos.erase(bufferInfo_itr);
+                }
+                else
+                {
+                    ++bufferInfo_itr;
+                }
             }
         }
 
@@ -182,8 +189,7 @@ void TransferTask::_transferBufferInfos(VkCommandBuffer vk_commandBuffer, Frame&
 
 void TransferTask::assign(const ImageInfoList& imageInfoList)
 {
-    Logger::Level level = Logger::LOGGER_DEBUG;
-    //level = Logger::LOGGER_INFO;
+    CPU_INSTRUMENTATION_L1(instrumentation);
 
     log(level, "TransferTask::assign(imageInfoList) ", imageInfoList.size());
     for (auto& imageInfo : imageInfoList)
@@ -214,8 +220,7 @@ void TransferTask::assign(const ImageInfoList& imageInfoList)
 
 void TransferTask::_transferImageInfos(VkCommandBuffer vk_commandBuffer, Frame& frame, VkDeviceSize& offset)
 {
-    Logger::Level level = Logger::LOGGER_DEBUG;
-    //level = Logger::LOGGER_INFO;
+    CPU_INSTRUMENTATION_L1(instrumentation);
 
     auto deviceID = device->deviceID;
 
@@ -235,26 +240,28 @@ void TransferTask::_transferImageInfos(VkCommandBuffer vk_commandBuffer, Frame& 
                 _transferImageInfo(vk_commandBuffer, frame, offset, *imageInfo);
             }
 
-            ++imageInfo_itr;
+            if (imageInfo->imageView->image->data->properties.dataVariance == STATIC_DATA)
+            {
+                log(level, "       removing copied static image data: ", imageInfo, ", ", imageInfo->imageView->image->data);
+                imageInfo_itr = _dynamicImageInfoSet.erase(imageInfo_itr);
+            }
+            else
+            {
+                ++imageInfo_itr;
+            }
         }
     }
 }
 
 void TransferTask::_transferImageInfo(VkCommandBuffer vk_commandBuffer, Frame& frame, VkDeviceSize& offset, ImageInfo& imageInfo)
 {
-    Logger::Level level = Logger::LOGGER_DEBUG;
-    //level = Logger::LOGGER_INFO;
+    CPU_INSTRUMENTATION_L1(instrumentation);
 
-    uint32_t deviceID = device->deviceID;
     auto& imageStagingBuffer = frame.staging;
     auto& buffer_data = frame.buffer_data;
     char* ptr = reinterpret_cast<char*>(buffer_data) + offset;
 
     auto& data = imageInfo.imageView->image->data;
-    auto& textureImage = imageInfo.imageView->image;
-    auto aspectMask = imageInfo.imageView->subresourceRange.aspectMask;
-    VkImageLayout targetImageLayout = imageInfo.imageLayout;
-
     auto properties = data->properties;
     auto width = data->width();
     auto height = data->height();
@@ -326,254 +333,12 @@ void TransferTask::_transferImageInfo(VkCommandBuffer vk_commandBuffer, Frame& f
     }
 
     // transfer data.
-
-    uint32_t faceWidth = width;
-    uint32_t faceHeight = height;
-    uint32_t faceDepth = depth;
-    uint32_t arrayLayers = 1;
-
-    switch (imageInfo.imageView->viewType)
-    {
-    case (VK_IMAGE_VIEW_TYPE_CUBE):
-        arrayLayers = faceDepth;
-        faceDepth = 1;
-        break;
-    case (VK_IMAGE_VIEW_TYPE_1D_ARRAY):
-        arrayLayers = faceHeight * faceDepth;
-        faceHeight = 1;
-        faceDepth = 1;
-        break;
-    case (VK_IMAGE_VIEW_TYPE_2D_ARRAY):
-        arrayLayers = faceDepth;
-        faceDepth = 1;
-        break;
-    case (VK_IMAGE_VIEW_TYPE_CUBE_ARRAY):
-        arrayLayers = faceDepth;
-        faceDepth = 1;
-        break;
-    default:
-        break;
-    }
-
-    uint32_t destWidth = faceWidth * properties.blockWidth;
-    uint32_t destHeight = faceHeight * properties.blockHeight;
-    uint32_t destDepth = faceDepth * properties.blockDepth;
-
-    const auto valueSize = properties.stride; // data->valueSize();
-
-    bool useDataMipmaps = (mipLevels > 1) && (mipmapOffsets.size() > 1);
-    bool generatMipmaps = (mipLevels > 1) && (mipmapOffsets.size() <= 1);
-
-    auto vk_textureImage = textureImage->vk(deviceID);
-
-    if (generatMipmaps)
-    {
-        VkFormatProperties props;
-        vkGetPhysicalDeviceFormatProperties(*(device->getPhysicalDevice()), properties.format, &props);
-        const bool isBlitPossible = (props.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT) > 0;
-
-        if (!isBlitPossible)
-        {
-            generatMipmaps = false;
-        }
-    }
-
-    // transfer the data.
-    VkImageMemoryBarrier preCopyBarrier = {};
-    preCopyBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    preCopyBarrier.srcAccessMask = 0;
-    preCopyBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    preCopyBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    preCopyBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    preCopyBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    preCopyBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    preCopyBarrier.image = vk_textureImage;
-    preCopyBarrier.subresourceRange.aspectMask = aspectMask;
-    preCopyBarrier.subresourceRange.baseArrayLayer = 0;
-    preCopyBarrier.subresourceRange.layerCount = arrayLayers;
-    preCopyBarrier.subresourceRange.levelCount = mipLevels;
-    preCopyBarrier.subresourceRange.baseMipLevel = 0;
-
-    vkCmdPipelineBarrier(vk_commandBuffer,
-                         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-                         0, nullptr,
-                         0, nullptr,
-                         1, &preCopyBarrier);
-
-    std::vector<VkBufferImageCopy> regions;
-
-    if (useDataMipmaps)
-    {
-        size_t local_offset = 0u;
-        regions.resize(mipLevels * arrayLayers);
-
-        uint32_t mipWidth = destWidth;
-        uint32_t mipHeight = destHeight;
-        uint32_t mipDepth = destDepth;
-
-        for (uint32_t mipLevel = 0; mipLevel < mipLevels; ++mipLevel)
-        {
-            const size_t faceSize = static_cast<size_t>(faceWidth * faceHeight * faceDepth * valueSize);
-
-            for (uint32_t face = 0; face < arrayLayers; ++face)
-            {
-                auto& region = regions[mipLevel * arrayLayers + face];
-                region.bufferOffset = source_offset + local_offset;
-                region.bufferRowLength = 0;
-                region.bufferImageHeight = 0;
-                region.imageSubresource.aspectMask = aspectMask;
-                region.imageSubresource.mipLevel = mipLevel;
-                region.imageSubresource.baseArrayLayer = face;
-                region.imageSubresource.layerCount = 1;
-                region.imageOffset = {0, 0, 0};
-                region.imageExtent = {mipWidth, mipHeight, mipDepth};
-
-                local_offset += faceSize;
-            }
-
-            if (mipWidth > 1) mipWidth /= 2;
-            if (mipHeight > 1) mipHeight /= 2;
-            if (mipDepth > 1) mipDepth /= 2;
-            if (faceWidth > 1) faceWidth /= 2;
-            if (faceHeight > 1) faceHeight /= 2;
-            if (faceDepth > 1) faceDepth /= 2;
-        }
-    }
-    else
-    {
-        regions.resize(arrayLayers);
-
-        const size_t faceSize = static_cast<size_t>(faceWidth * faceHeight * faceDepth * valueSize);
-        for (auto face = 0u; face < arrayLayers; face++)
-        {
-            auto& region = regions[face];
-            region.bufferOffset = source_offset + face * faceSize;
-            region.bufferRowLength = 0;
-            region.bufferImageHeight = 0;
-            region.imageSubresource.aspectMask = aspectMask;
-            region.imageSubresource.mipLevel = 0;
-            region.imageSubresource.baseArrayLayer = face;
-            region.imageSubresource.layerCount = 1;
-            region.imageOffset = {0, 0, 0};
-            region.imageExtent = {destWidth, destHeight, destDepth};
-        }
-    }
-
-    vkCmdCopyBufferToImage(vk_commandBuffer, imageStagingBuffer->vk(deviceID), vk_textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           static_cast<uint32_t>(regions.size()), regions.data());
-
-    if (generatMipmaps)
-    {
-        VkImageMemoryBarrier barrier = {};
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.image = vk_textureImage;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.subresourceRange.aspectMask = aspectMask;
-        barrier.subresourceRange.baseArrayLayer = 0;
-        barrier.subresourceRange.layerCount = arrayLayers;
-        barrier.subresourceRange.levelCount = 1;
-
-        int32_t mipWidth = destWidth;
-        int32_t mipHeight = destHeight;
-        int32_t mipDepth = destDepth;
-
-        for (uint32_t i = 1; i < mipLevels; ++i)
-        {
-            barrier.subresourceRange.baseMipLevel = i - 1;
-            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-            vkCmdPipelineBarrier(vk_commandBuffer,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-                                 0, nullptr,
-                                 0, nullptr,
-                                 1, &barrier);
-
-            std::vector<VkImageBlit> blits(arrayLayers);
-
-            for (auto face = 0u; face < arrayLayers; ++face)
-            {
-                auto& blit = blits[face];
-                blit.srcOffsets[0] = {0, 0, 0};
-                blit.srcOffsets[1] = {mipWidth, mipHeight, mipDepth};
-                blit.srcSubresource.aspectMask = aspectMask;
-                blit.srcSubresource.mipLevel = i - 1;
-                blit.srcSubresource.baseArrayLayer = face;
-                blit.srcSubresource.layerCount = arrayLayers;
-                blit.dstOffsets[0] = {0, 0, 0};
-                blit.dstOffsets[1] = {mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, mipDepth > 1 ? mipDepth / 2 : 1};
-                blit.dstSubresource.aspectMask = aspectMask;
-                blit.dstSubresource.mipLevel = i;
-                blit.dstSubresource.baseArrayLayer = face;
-                blit.dstSubresource.layerCount = arrayLayers;
-            }
-
-            vkCmdBlitImage(vk_commandBuffer,
-                           vk_textureImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           vk_textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           static_cast<uint32_t>(blits.size()), blits.data(),
-                           VK_FILTER_LINEAR);
-
-            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            barrier.newLayout = targetImageLayout;
-            barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-            vkCmdPipelineBarrier(vk_commandBuffer,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-                                 0, nullptr,
-                                 0, nullptr,
-                                 1, &barrier);
-
-            if (mipWidth > 1) mipWidth /= 2;
-            if (mipHeight > 1) mipHeight /= 2;
-            if (mipDepth > 1) mipDepth /= 2;
-        }
-
-        barrier.subresourceRange.baseMipLevel = mipLevels - 1;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        barrier.newLayout = targetImageLayout;
-        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-        vkCmdPipelineBarrier(vk_commandBuffer,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-                             0, nullptr,
-                             0, nullptr,
-                             1, &barrier);
-    }
-    else
-    {
-        VkImageMemoryBarrier postCopyBarrier = {};
-        postCopyBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        postCopyBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        postCopyBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        postCopyBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        postCopyBarrier.newLayout = targetImageLayout;
-        postCopyBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        postCopyBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        postCopyBarrier.image = vk_textureImage;
-        postCopyBarrier.subresourceRange.aspectMask = aspectMask;
-        postCopyBarrier.subresourceRange.baseArrayLayer = 0;
-        postCopyBarrier.subresourceRange.layerCount = arrayLayers;
-        postCopyBarrier.subresourceRange.levelCount = mipLevels;
-        postCopyBarrier.subresourceRange.baseMipLevel = 0;
-
-        vkCmdPipelineBarrier(vk_commandBuffer,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-                             0, nullptr,
-                             0, nullptr,
-                             1, &postCopyBarrier);
-    }
+    transferImageData(imageInfo.imageView, imageInfo.imageLayout, properties, width, height, depth, mipLevels, mipmapOffsets, imageStagingBuffer, source_offset, vk_commandBuffer, device);
 }
 
 VkResult TransferTask::transferDynamicData()
 {
-    Logger::Level level = Logger::LOGGER_DEBUG;
-    //level = Logger::LOGGER_INFO;
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "transferDynamicData", COLOR_RECORD);
 
     size_t frameIndex = index(0);
     if (frameIndex > _frames.size()) return VK_SUCCESS;
@@ -606,7 +371,8 @@ VkResult TransferTask::transferDynamicData()
 
     if (!semaphore)
     {
-        semaphore = Semaphore::create(device, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        // signal transfer submission has completed
+        semaphore = Semaphore::create(device, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
     }
 
     VkResult result = VK_SUCCESS;
@@ -634,32 +400,64 @@ VkResult TransferTask::transferDynamicData()
     vkBeginCommandBuffer(vk_commandBuffer, &beginInfo);
 
     VkDeviceSize offset = 0;
+    {
+        COMMAND_BUFFER_INSTRUMENTATION(instrumentation, *commandBuffer, "transferDynamicData", COLOR_GPU)
 
-    // transfer the modified BufferInfo and ImageInfo
-    _transferBufferInfos(vk_commandBuffer, frame, offset);
-    _transferImageInfos(vk_commandBuffer, frame, offset);
+        // transfer the modified BufferInfo and ImageInfo
+        _transferBufferInfos(vk_commandBuffer, frame, offset);
+        _transferImageInfos(vk_commandBuffer, frame, offset);
+    }
 
     vkEndCommandBuffer(vk_commandBuffer);
 
-    // if no regions to copy have been found then commandBuffer will be empty so no need to submit it to queue and use the associated single semaphore
+    // if no regions to copy have been found then commandBuffer will be empty so no need to submit it to queue and signal the associated semaphore
     if (offset > 0)
     {
         // submit the transfer commands
         VkSubmitInfo submitInfo = {};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-        submitInfo.waitSemaphoreCount = 0;
-        submitInfo.pWaitSemaphores = nullptr;
-        submitInfo.pWaitDstStageMask = nullptr;
+        // set up the vulkan wait sempahore
+        std::vector<VkSemaphore> vk_waitSemaphores;
+        std::vector<VkPipelineStageFlags> vk_waitStages;
+        if (waitSemaphores.empty())
+        {
+            submitInfo.waitSemaphoreCount = 0;
+            submitInfo.pWaitSemaphores = nullptr;
+            submitInfo.pWaitDstStageMask = nullptr;
+            // info("TransferTask::transferDynamicData() ", this, ", _currentFrameIndex = ", _currentFrameIndex);
+        }
+        else
+        {
+            for (auto& waitSemaphore : waitSemaphores)
+            {
+                vk_waitSemaphores.emplace_back(*(waitSemaphore));
+                vk_waitStages.emplace_back(waitSemaphore->pipelineStageFlags());
+            }
+
+            submitInfo.waitSemaphoreCount = static_cast<uint32_t>(vk_waitSemaphores.size());
+            submitInfo.pWaitSemaphores = vk_waitSemaphores.data();
+            submitInfo.pWaitDstStageMask = vk_waitStages.data();
+        }
+
+        // set up the vulkan signal sempahore
+        std::vector<VkSemaphore> vk_signalSemaphores;
+        vk_signalSemaphores.push_back(*semaphore);
+        for (auto& ss : signalSemaphores)
+        {
+            vk_signalSemaphores.push_back(*ss);
+        }
+
+        submitInfo.signalSemaphoreCount = static_cast<uint32_t>(vk_signalSemaphores.size());
+        submitInfo.pSignalSemaphores = vk_signalSemaphores.data();
 
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &vk_commandBuffer;
 
-        submitInfo.signalSemaphoreCount = 1;
-        VkSemaphore vk_transferCompletedSemaphore = *semaphore;
-        submitInfo.pSignalSemaphores = &vk_transferCompletedSemaphore;
-
         result = transferQueue->submit(submitInfo);
+
+        waitSemaphores.clear();
+
         if (result != VK_SUCCESS) return result;
 
         currentTransferCompletedSemaphore = semaphore;
@@ -667,6 +465,8 @@ VkResult TransferTask::transferDynamicData()
     else
     {
         log(level, "Nothing to submit");
+
+        waitSemaphores.clear();
     }
 
     return VK_SUCCESS;

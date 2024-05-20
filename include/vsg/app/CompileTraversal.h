@@ -19,6 +19,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/state/BufferInfo.h>
 #include <vsg/state/Descriptor.h>
 #include <vsg/state/ResourceHints.h>
+#include <vsg/utils/Instrumentation.h>
 #include <vsg/vk/CommandPool.h>
 #include <vsg/vk/Context.h>
 #include <vsg/vk/DescriptorPool.h>
@@ -28,7 +29,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// CompileTraversal traverses a scene graph invoke all the StateCommand/Command::compile(..) methods to create all Vulkan objects, allocated GPU memory and transfer data to GPU.
+    /// CompileTraversal traverses a scene graph and invokes all the StateCommand/Command::compile(..) methods to create all Vulkan objects, allocate GPU memory and transfer data to GPU.
     class VSG_DECLSPEC CompileTraversal : public Inherit<Visitor, CompileTraversal>
     {
     public:
@@ -38,12 +39,15 @@ namespace vsg
         explicit CompileTraversal(Window& window, ref_ptr<ViewportState> viewport = {}, const ResourceRequirements& resourceRequirements = {});
         explicit CompileTraversal(const Viewer& viewer, const ResourceRequirements& resourceRequirements = {});
 
-        /// specification of the queue to uses
+        /// specification of the queue to use
         VkQueueFlags queueFlags = VK_QUEUE_GRAPHICS_BIT;
         uint32_t queueFamilyIndex = 1;
 
         /// list of Context that Vulkan objects should be compiled for.
         std::list<ref_ptr<Context>> contexts;
+
+        /// Hook for assigning Instrumentation to enable profiling
+        ref_ptr<Instrumentation> instrumentation;
 
         /// add a compile Context for device
         void add(ref_ptr<Device> device, const ResourceRequirements& resourceRequirements = {});
@@ -60,10 +64,15 @@ namespace vsg
         /// add a compile Context for all the Views assigned to a Viewer
         void add(const Viewer& viewer, const ResourceRequirements& resourceRequirements = {});
 
+        /// assign Instrumentation to all Context
+        void assignInstrumentation(ref_ptr<Instrumentation> in_instrumentation);
+
+        Instrumentation* getInstrumentation() override { return instrumentation.get(); }
+
         virtual bool record();
         virtual void waitForCompletion();
 
-        /// convenience method that compiles a object/subgraph
+        /// convenience method that compiles an object/subgraph
         template<typename T>
         void compile(T object, bool wait = true)
         {
@@ -75,14 +84,16 @@ namespace vsg
         void apply(Object& object) override;
         void apply(Compilable& node) override;
         void apply(Commands& commands) override;
-        void apply(StateGroup& stateGroup) override;
         void apply(Geometry& geometry) override;
         void apply(CommandGraph& commandGraph) override;
+        void apply(SecondaryCommandGraph& secondaryCommandGraph) override;
         void apply(RenderGraph& renderGraph) override;
         void apply(View& view) override;
 
     protected:
         ~CompileTraversal();
+
+        void addViewDependentState(ViewDependentState& viewDependentState, const ResourceRequirements& resourceRequirements);
     };
     VSG_type_name(vsg::CompileTraversal);
 

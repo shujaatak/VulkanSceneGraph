@@ -11,20 +11,47 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/io/Options.h>
+#include <vsg/lighting/AmbientLight.h>
+#include <vsg/lighting/DirectionalLight.h>
 #include <vsg/nodes/AbsoluteTransform.h>
-#include <vsg/nodes/Light.h>
 
 using namespace vsg;
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-// Light
-//
+Light::Light()
+{
+}
+
+Light::Light(const Light& rhs, const CopyOp& copyop) :
+    Inherit(rhs, copyop),
+    name(rhs.name),
+    color(rhs.color),
+    intensity(rhs.intensity),
+    shadowSettings(rhs.shadowSettings)
+{
+}
+
+int Light::compare(const Object& rhs_object) const
+{
+    int result = Node::compare(rhs_object);
+    if (result != 0) return result;
+
+    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+    if ((result = compare_value(name, rhs.name)) != 0) return result;
+    if ((result = compare_value(color, rhs.color)) != 0) return result;
+    if ((result = compare_value(intensity, rhs.intensity)) != 0) return result;
+    return compare_pointer(shadowSettings, rhs.shadowSettings);
+}
+
 void Light::read(Input& input)
 {
     input.read("name", name);
     input.read("color", color);
     input.read("intensity", intensity);
+
+    if (input.version_greater_equal(1, 1, 3))
+    {
+        input.read("shadowSettings", shadowSettings);
+    }
 }
 
 void Light::write(Output& output) const
@@ -32,80 +59,11 @@ void Light::write(Output& output) const
     output.write("name", name);
     output.write("color", color);
     output.write("intensity", intensity);
-}
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-// AmbientLight
-//
-void AmbientLight::read(Input& input)
-{
-    Light::read(input);
-}
-
-void AmbientLight::write(Output& output) const
-{
-    Light::write(output);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-// DirectionalLight
-//
-void DirectionalLight::read(Input& input)
-{
-    Light::read(input);
-
-    input.read("direction", direction);
-}
-
-void DirectionalLight::write(Output& output) const
-{
-    Light::write(output);
-
-    output.write("direction", direction);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-// PointLight
-//
-void PointLight::read(Input& input)
-{
-    Light::read(input);
-
-    input.read("position", position);
-}
-
-void PointLight::write(Output& output) const
-{
-    Light::write(output);
-
-    output.write("position", position);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-// SpotLight
-//
-void SpotLight::read(Input& input)
-{
-    Light::read(input);
-
-    input.read("position", position);
-    input.read("direction", direction);
-    input.read("innerAngle", innerAngle);
-    input.read("outerAngle", outerAngle);
-}
-
-void SpotLight::write(Output& output) const
-{
-    Light::write(output);
-
-    output.write("position", position);
-    output.write("direction", direction);
-    output.write("innerAngle", innerAngle);
-    output.write("outerAngle", outerAngle);
+    if (output.version_greater_equal(1, 1, 3))
+    {
+        output.write("shadowSettings", shadowSettings);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

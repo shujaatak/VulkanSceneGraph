@@ -10,6 +10,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/core/Exception.h>
 #include <vsg/core/compare.h>
 #include <vsg/io/Logger.h>
 #include <vsg/io/Options.h>
@@ -24,6 +25,12 @@ using namespace vsg;
 //
 DescriptorBuffer::DescriptorBuffer() :
     Inherit(0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+{
+}
+
+DescriptorBuffer::DescriptorBuffer(const DescriptorBuffer& rhs, const CopyOp& copyop) :
+    Inherit(rhs, copyop),
+    bufferInfoList(copyop(rhs.bufferInfoList))
 {
 }
 
@@ -161,7 +168,7 @@ void DescriptorBuffer::compile(Context& context)
                     }
                     else
                     {
-                        warn("DescriptorBuffer::compile(..) unable to allocate bufferInfo with within associated Buffer.");
+                        warn("DescriptorBuffer::compile(..) unable to allocate bufferInfo within associated Buffer.");
                     }
                 }
             }
@@ -177,15 +184,15 @@ void DescriptorBuffer::compile(Context& context)
                 if (bufferInfo->buffer->getDeviceMemory(deviceID) == nullptr)
                 {
                     auto memRequirements = bufferInfo->buffer->getMemoryRequirements(deviceID);
-                    auto memory = vsg::DeviceMemory::create(context.device, memRequirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-                    auto [allocated, offset] = memory->reserve(bufferInfo->buffer->size);
-                    if (allocated)
+                    VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+                    auto [deviceMemory, offset] = context.deviceMemoryBufferPools->reserveMemory(memRequirements, flags);
+                    if (deviceMemory)
                     {
-                        bufferInfo->buffer->bind(memory, offset);
+                        bufferInfo->buffer->bind(deviceMemory, offset);
                     }
                     else
                     {
-                        warn("DescriptorBuffer::compile(..) unable to allocate buffer within associated DeviceMemory.");
+                        throw Exception{"Error: DescriptorBuffer::compile(..) failed to allocate buffer from deviceMemoryBufferPools.", VK_ERROR_OUT_OF_DEVICE_MEMORY};
                     }
                 }
             }

@@ -23,13 +23,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    /// TileDatabaseSettings provides the settings used by vsg::TileDatabase & vsg::tile ReaderWriter to guide paging in image, DEM tiles from disk/http/.
+    /// TileDatabaseSettings provides the settings used by vsg::TileDatabase and vsg::tile ReaderWriter to guide paging in image, DEM tiles from disk/http/.
     class VSG_DECLSPEC TileDatabaseSettings : public Inherit<Object, TileDatabaseSettings>
     {
     public:
-        // read/write of TileReader settings
-        void read(Input& input) override;
-        void write(Output& output) const override;
+        TileDatabaseSettings();
+        TileDatabaseSettings(const TileDatabaseSettings& rhs, const CopyOp& copyop = {});
 
         // defaults for readymap
         dbox extents = {{-180.0, -90.0, 0.0}, {180.0, 90.0, 1.0}};
@@ -51,6 +50,14 @@ namespace vsg
 
         /// optional shaderSet to use for setting up shaders, if left null use vsg::createTileShaderSet().
         ref_ptr<ShaderSet> shaderSet;
+
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return TileDatabaseSettings::create(*this, copyop); }
+        int compare(const Object& rhs) const override;
+
+        // read/write of TileReader settings
+        void read(Input& input) override;
+        void write(Output& output) const override;
     };
     VSG_type_name(vsg::TileDatabaseSettings);
 
@@ -59,8 +66,15 @@ namespace vsg
     class VSG_DECLSPEC TileDatabase : public Inherit<Node, TileDatabase>
     {
     public:
+        TileDatabase();
+        TileDatabase(const TileDatabase& rhs, const CopyOp& copyop = {});
+
         ref_ptr<TileDatabaseSettings> settings;
         ref_ptr<Node> child;
+
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return TileDatabase::create(*this, copyop); }
+        int compare(const Object& rhs) const override;
 
         template<class N, class V>
         static void t_traverse(N& node, V& visitor)
@@ -80,7 +94,7 @@ namespace vsg
     };
     VSG_type_name(vsg::TileDatabase);
 
-    /// convenience function for getting the part of string that enclosed between a start_match and end_match string
+    /// convenience function for getting the part of a string enclosed between a start_match and end_match string
     extern VSG_DECLSPEC std::string_view find_field(const std::string& source, const std::string_view& start_match, const std::string_view& end_match);
 
     /// convenience function for replacing all instances of a match string with the replacement string.

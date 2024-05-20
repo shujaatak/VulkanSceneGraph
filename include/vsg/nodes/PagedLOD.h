@@ -26,16 +26,40 @@ namespace vsg
     class PagedLODList;
 
     /** Level of Detail Node,
-     *  Children should be ordered with the highest resolution PagedLODChild first, thought to lowest resolution PagedLOD child last.
-     *  The PagedLODChild struct stores the visibleHeightRatio and child that it's associated with.
-     *  During culling tHe visibleHeightRatio is used as a ratio of screen height that Bound sphere occupies on screen needs to be at least in order for the associated child to be traversed.
-     *  Once on child passes this test no more children are checked, so that no more than on child will ever being traversed in a record traversal.
-     *  If no PagedLODChild pass the visible height test then none of the PagedLOD's children will be visible.
+     *  Children should be ordered with the highest resolution PagedLODChild first, through to lowest resolution PagedLODChild last.
+     *  The PagedLODChild struct stores the minimumScreenHeightRatio and child that it's associated with.
+     *  During culling the minimumScreenHeightRatio is used as a minimum ratio of screen height that a bounding sphere needs to occupy in order for the associated child to be traversed.
+     *  Once one child passes this test no more children are checked, so that no more than one child will ever be traversed in a record traversal.
+     *  If no PagedLODChild passes the visible height test then none of the PagedLOD's children will be visible.
      *  During the record traversals the Bound sphere is also checked against the view frustum so that PagedLOD's also enable view frustum culling for subgraphs so there is no need for a separate CullNode/CullGroup to decorate it. */
     class VSG_DECLSPEC PagedLOD : public Inherit<Node, PagedLOD>
     {
     public:
         PagedLOD();
+        PagedLOD(const PagedLOD& rhs, const CopyOp& copyop = {});
+
+        struct Child
+        {
+            double minimumScreenHeightRatio = 0.0; // 0.0 is always visible
+            ref_ptr<Node> node;
+        };
+
+        // external file to load when child 0 is null.
+        Path filename;
+
+        dsphere bound;
+
+        using Children = std::array<Child, 2>;
+        Children children;
+
+        bool highResActive(uint64_t frameCount, uint64_t inactiveAge = 3) const
+        {
+            return (frameCount - frameHighResLastUsed.load()) <= inactiveAge;
+        }
+
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return PagedLOD::create(*this, copyop); }
+        int compare(const Object& rhs) const override;
 
         template<class N, class V>
         static void t_traverse(N& node, V& visitor)
@@ -53,33 +77,14 @@ namespace vsg
         void read(Input& input) override;
         void write(Output& output) const override;
 
-        struct Child
-        {
-            double minimumScreenHeightRatio = 0.0; // 0.0 is always visible
-            ref_ptr<Node> node;
-        };
-
-        // external file to load when child 0 is null.
-        Path filename;
-
-        // priority value assigned by record traversal as a guide to how important the external child is for loading.
-        mutable std::atomic<double> priority{0.0};
-
-        dsphere bound;
-
-        using Children = std::array<Child, 2>;
-        Children children;
-
-        bool highResActive(uint64_t frameCount, uint64_t inactiveAge = 3) const
-        {
-            return (frameCount - frameHighResLastUsed.load()) <= inactiveAge;
-        }
-
     protected:
         virtual ~PagedLOD();
 
     public:
         ref_ptr<Options> options;
+
+        // priority value assigned by record traversal as a guide to how important the external child is for loading.
+        mutable std::atomic<double> priority{0.0};
 
         mutable std::atomic_uint64_t frameHighResLastUsed{0};
         mutable std::atomic_uint requestCount{0};

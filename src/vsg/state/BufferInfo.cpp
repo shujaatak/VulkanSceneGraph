@@ -45,12 +45,29 @@ BufferInfo::~BufferInfo()
     release();
 }
 
+ref_ptr<Object> BufferInfo::clone(const CopyOp& copyop) const
+{
+    auto new_data = copyop(data);
+    if (new_data == data) return ref_ptr<Object>(const_cast<BufferInfo*>(this));
+
+    return BufferInfo::create(new_data);
+}
+
 int BufferInfo::compare(const Object& rhs_object) const
 {
     int result = Object::compare(rhs_object);
     if (result != 0) return result;
 
     auto& rhs = static_cast<decltype(*this)>(rhs_object);
+
+    if (data != rhs.data && data && rhs.data)
+    {
+        if (data->properties.dataVariance != STATIC_DATA || rhs.data->properties.dataVariance != STATIC_DATA)
+        {
+            if (data < rhs.data) return -1;
+            return 1; // from checks above it must be that data > rhs.data
+        }
+    }
 
     if ((result = compare_pointer(data, rhs.data))) return result;
 
@@ -99,18 +116,18 @@ void BufferInfo::copyDataToBuffer(uint32_t deviceID)
         {
             warn("BufferInfo::copyDataToBuffer() cannot copy data. DeviceMemory does not support direct memory mapping.");
 
+            // you can use dynamic data updates provided by vsg::TransferTask or alternatively, you can implement the following steps:
             // 1. allocate staging buffer
             // 2. copy to staging buffer
             // 3. transfer from staging buffer to device local buffer - use CopyAndReleaseBuffer
-
             return;
         }
 
         void* buffer_data;
-        VkResult result = dm->map(offset, range, 0, &buffer_data);
+        VkResult result = dm->map(buffer->getMemoryOffset(deviceID) + offset, range, 0, &buffer_data);
         if (result != 0)
         {
-            warn("BufferInfo::copyDataToBuffer() cannot copy data. VkMapMemory(..) failed with result = ", result);
+            warn("BufferInfo::copyDataToBuffer() cannot copy data. vkMapMemory(..) failed with result = ", result);
             return;
         }
 
@@ -197,7 +214,10 @@ bool vsg::createBufferAndTransferData(Context& context, const BufferInfoList& bu
     Device* device = context.device;
 
     VkDeviceSize alignment = 4;
-    if (usage == VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) alignment = device->getPhysicalDevice()->getProperties().limits.minUniformBufferOffsetAlignment;
+    if (usage == VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+        alignment = device->getPhysicalDevice()->getProperties().limits.minUniformBufferOffsetAlignment;
+    else if (usage == VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+        alignment = device->getPhysicalDevice()->getProperties().limits.minStorageBufferOffsetAlignment;
 
     VkDeviceSize totalSize = 0;
     VkDeviceSize offset = 0;
@@ -302,7 +322,10 @@ BufferInfoList vsg::createHostVisibleBuffer(Device* device, const DataList& data
     BufferInfoList bufferInfoList;
 
     VkDeviceSize alignment = 4;
-    if (usage == VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) alignment = device->getPhysicalDevice()->getProperties().limits.minUniformBufferOffsetAlignment;
+    if (usage == VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+        alignment = device->getPhysicalDevice()->getProperties().limits.minUniformBufferOffsetAlignment;
+    else if (usage == VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+        alignment = device->getPhysicalDevice()->getProperties().limits.minStorageBufferOffsetAlignment;
 
     VkDeviceSize totalSize = 0;
     VkDeviceSize offset = 0;

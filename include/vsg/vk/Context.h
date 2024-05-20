@@ -15,11 +15,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <deque>
 #include <memory>
 
+#include <vsg/commands/Command.h>
+#include <vsg/commands/CopyAndReleaseBuffer.h>
+#include <vsg/commands/CopyAndReleaseImage.h>
 #include <vsg/core/ScratchMemory.h>
 #include <vsg/nodes/Group.h>
 #include <vsg/state/BufferInfo.h>
 #include <vsg/state/GraphicsPipeline.h>
 #include <vsg/state/ImageInfo.h>
+#include <vsg/utils/Instrumentation.h>
 #include <vsg/utils/ShaderCompiler.h>
 #include <vsg/vk/CommandPool.h>
 #include <vsg/vk/DescriptorPool.h>
@@ -27,17 +31,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/vk/MemoryBufferPools.h>
 #include <vsg/vk/ResourceRequirements.h>
 
-#include <vsg/commands/Command.h>
-#include <vsg/commands/CopyAndReleaseBuffer.h>
-#include <vsg/commands/CopyAndReleaseImage.h>
-
 namespace vsg
 {
     // forward declare
     class View;
     class ViewDependentState;
 
-    /// Helper command for settings up RayTracing structures.
+    /// Helper command for setting up RayTracing structures.
     class VSG_DECLSPEC BuildAccelerationStructureCommand : public Inherit<Command, BuildAccelerationStructureCommand>
     {
     public:
@@ -66,7 +66,7 @@ namespace vsg
     class VSG_DECLSPEC Context : public Inherit<Object, Context>
     {
     public:
-        explicit Context(Device* in_device, const ResourceRequirements& resourceRequirements = {});
+        explicit Context(Device* in_device, const ResourceRequirements& in_resourceRequirements = {});
 
         Context(const Context& context);
 
@@ -74,12 +74,14 @@ namespace vsg
 
         const uint32_t deviceID = 0;
         ref_ptr<Device> device;
+        ResourceRequirements resourceRequirements;
 
         observer_ptr<View> view;
         uint32_t viewID = 0;
+        Mask mask = MASK_ALL;
         ViewDependentState* viewDependentState = nullptr;
 
-        /// get existing ShaderCompile or create a new one when GLSLang is supported
+        /// get existing ShaderCompiler or create a new one when GLSLang is supported
         ShaderCompiler* getOrCreateShaderCompiler();
 
         ref_ptr<CommandBuffer> getOrCreateCommandBuffer();
@@ -116,6 +118,9 @@ namespace vsg
 
         // ShaderCompiler
         ref_ptr<ShaderCompiler> shaderCompiler;
+
+        /// Hook for assigning Instrumentation to enable profiling
+        ref_ptr<Instrumentation> instrumentation;
 
         // transfer data settings
         ref_ptr<Queue> graphicsQueue;

@@ -12,8 +12,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/vk/DeviceExtensions.h>
 #include <vsg/vk/DeviceFeatures.h>
-#include <vsg/vk/Extensions.h>
 #include <vsg/vk/Queue.h>
 
 #include <list>
@@ -32,7 +32,7 @@ namespace vsg
 
     using QueueSettings = std::vector<QueueSetting>;
 
-    /// Device encapsulate vkDeivce, a logical handle to the PhysicalDevice with capabilities specified during construction.
+    /// Device encapsulates VkDevice, a logical handle to the PhysicalDevice with capabilities specified during construction.
     class VSG_DECLSPEC Device : public Inherit<Object, Device>
     {
     public:
@@ -53,9 +53,12 @@ namespace vsg
         AllocationCallbacks* getAllocationCallbacks() { return _allocator.get(); }
         const AllocationCallbacks* getAllocationCallbacks() const { return _allocator.get(); }
 
+        const Queues& getQueues() const { return _queues; }
+
         ref_ptr<Queue> getQueue(uint32_t queueFamilyIndex, uint32_t queueIndex = 0);
 
-        const Extensions* getExtensions() const { return _extensions.get(); }
+        /// get the extensions structure that holds a range of function pointers to vkInstance extensions
+        const DeviceExtensions* getExtensions() const { return _extensions.get(); }
 
         /// get the address of specified function using vkGetDeviceProcAddr
         /// for core commands beyond the apiVersion specified in vsg::Instance creation, vkGetDeviceProcAddr may return a non-nullptr function pointer, though the function pointer must not be called.
@@ -73,6 +76,12 @@ namespace vsg
         /// device-level core functionality can be used if both VkInstance and VkPhysicalDevice support the Vulkan version that provides it.
         bool supportsApiVersion(uint32_t version) const;
 
+        /// list of enabled extensions when the Device was created
+        const Names enabledExtensions;
+
+        /// return true if Device was created with specified extension
+        bool supportsDeviceExtension(const char* extensionName) const;
+
     protected:
         virtual ~Device();
 
@@ -81,9 +90,9 @@ namespace vsg
         ref_ptr<Instance> _instance;
         ref_ptr<PhysicalDevice> _physicalDevice;
         ref_ptr<AllocationCallbacks> _allocator;
-        ref_ptr<Extensions> _extensions;
+        ref_ptr<DeviceExtensions> _extensions;
 
-        std::list<ref_ptr<Queue>> _queues;
+        Queues _queues;
     };
     VSG_type_name(vsg::Device);
 

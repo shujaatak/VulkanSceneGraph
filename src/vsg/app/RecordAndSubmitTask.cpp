@@ -21,6 +21,8 @@ using namespace vsg;
 RecordAndSubmitTask::RecordAndSubmitTask(Device* in_device, uint32_t numBuffers) :
     device(in_device)
 {
+    CPU_INSTRUMENTATION_L1(instrumentation);
+
     _currentFrameIndex = numBuffers; // numBuffers is used to signify unset value
     for (uint32_t i = 0; i < numBuffers; ++i)
     {
@@ -30,15 +32,20 @@ RecordAndSubmitTask::RecordAndSubmitTask(Device* in_device, uint32_t numBuffers)
     _fences.resize(numBuffers);
     for (uint32_t i = 0; i < numBuffers; ++i)
     {
-        _fences[i] = vsg::Fence::create(device);
+        _fences[i] = Fence::create(device);
     }
 
-    earlyTransferTask = vsg::TransferTask::create(in_device, numBuffers);
-    lateTransferTask = vsg::TransferTask::create(in_device, numBuffers);
+    earlyTransferTask = TransferTask::create(in_device, numBuffers);
+    earlyTransferTaskConsumerCompletedSemaphore = Semaphore::create(in_device);
+
+    lateTransferTask = TransferTask::create(in_device, numBuffers);
+    lateTransferTaskConsumerCompletedSemaphore = Semaphore::create(in_device);
 }
 
 void RecordAndSubmitTask::advance()
 {
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "RecordAndSubmitTask advance", COLOR_VIEWER);
+
     if (_currentFrameIndex >= _indices.size())
     {
         // first frame so set to 0
@@ -68,7 +75,7 @@ size_t RecordAndSubmitTask::index(size_t relativeFrameIndex) const
     return relativeFrameIndex < _indices.size() ? _indices[relativeFrameIndex] : _indices.size();
 }
 
-/// fence() and fence(0) return the Fence for the frame currently being rendered, fence(1) return the previous frame's Fence etc.
+/// fence() and fence(0) return the Fence for the frame currently being rendered, fence(1) returns the previous frame's Fence etc.
 Fence* RecordAndSubmitTask::fence(size_t relativeFrameIndex)
 {
     size_t i = index(relativeFrameIndex);
@@ -77,13 +84,16 @@ Fence* RecordAndSubmitTask::fence(size_t relativeFrameIndex)
 
 VkResult RecordAndSubmitTask::submit(ref_ptr<FrameStamp> frameStamp)
 {
-    CommandBuffers recordedCommandBuffers;
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "RecordAndSubmitTask submit", COLOR_RECORD);
+
     if (VkResult result = start(); result != VK_SUCCESS) return result;
 
     if (earlyTransferTask)
     {
         if (VkResult result = earlyTransferTask->transferDynamicData(); result != VK_SUCCESS) return result;
     }
+
+    auto recordedCommandBuffers = RecordedCommandBuffers::create();
 
     if (VkResult result = record(recordedCommandBuffers, frameStamp); result != VK_SUCCESS) return result;
 
@@ -92,6 +102,8 @@ VkResult RecordAndSubmitTask::submit(ref_ptr<FrameStamp> frameStamp)
 
 VkResult RecordAndSubmitTask::start()
 {
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "RecordAndSubmitTask start", COLOR_RECORD);
+
     if (earlyTransferTask) earlyTransferTask->currentTransferCompletedSemaphore = {};
     if (lateTransferTask) lateTransferTask->currentTransferCompletedSemaphore = {};
 
@@ -106,8 +118,10 @@ VkResult RecordAndSubmitTask::start()
     return VK_SUCCESS;
 }
 
-VkResult RecordAndSubmitTask::record(CommandBuffers& recordedCommandBuffers, ref_ptr<FrameStamp> frameStamp)
+VkResult RecordAndSubmitTask::record(ref_ptr<RecordedCommandBuffers> recordedCommandBuffers, ref_ptr<FrameStamp> frameStamp)
 {
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "RecordAndSubmitTask record", COLOR_RECORD);
+
     for (auto& commandGraph : commandGraphs)
     {
         commandGraph->record(recordedCommandBuffers, frameStamp, databasePager);
@@ -116,14 +130,16 @@ VkResult RecordAndSubmitTask::record(CommandBuffers& recordedCommandBuffers, ref
     return VK_SUCCESS;
 }
 
-VkResult RecordAndSubmitTask::finish(CommandBuffers& recordedCommandBuffers)
+VkResult RecordAndSubmitTask::finish(ref_ptr<RecordedCommandBuffers> recordedCommandBuffers)
 {
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "RecordAndSubmitTask finish", COLOR_RECORD);
+
     if (lateTransferTask)
     {
         if (VkResult result = lateTransferTask->transferDynamicData(); result != VK_SUCCESS) return result;
     }
 
-    if (recordedCommandBuffers.empty())
+    if (recordedCommandBuffers->empty())
     {
         // nothing to do so return early
         std::this_thread::sleep_for(std::chrono::milliseconds(16)); // sleep for 1/60th of a second
@@ -139,7 +155,8 @@ VkResult RecordAndSubmitTask::finish(CommandBuffers& recordedCommandBuffers)
     auto current_fence = fence();
 
     // convert VSG CommandBuffer to Vulkan handles and add to the Fence's list of dependent CommandBuffers
-    for (auto& commandBuffer : recordedCommandBuffers)
+    auto buffers = recordedCommandBuffers->buffers();
+    for (auto& commandBuffer : buffers)
     {
         if (commandBuffer->level() == VK_COMMAND_BUFFER_LEVEL_PRIMARY) vk_commandBuffers.push_back(*commandBuffer);
 
@@ -152,12 +169,18 @@ VkResult RecordAndSubmitTask::finish(CommandBuffers& recordedCommandBuffers)
     {
         vk_waitSemaphores.emplace_back(*earlyTransferTask->currentTransferCompletedSemaphore);
         vk_waitStages.emplace_back(earlyTransferTask->currentTransferCompletedSemaphore->pipelineStageFlags());
+
+        earlyTransferTask->waitSemaphores.push_back(earlyTransferTaskConsumerCompletedSemaphore);
+        vk_signalSemaphores.emplace_back(*earlyTransferTaskConsumerCompletedSemaphore);
     }
 
     if (lateTransferTask && lateTransferTask->currentTransferCompletedSemaphore)
     {
         vk_waitSemaphores.emplace_back(*lateTransferTask->currentTransferCompletedSemaphore);
         vk_waitStages.emplace_back(lateTransferTask->currentTransferCompletedSemaphore->pipelineStageFlags());
+
+        lateTransferTask->waitSemaphores.push_back(lateTransferTaskConsumerCompletedSemaphore);
+        vk_signalSemaphores.emplace_back(*lateTransferTaskConsumerCompletedSemaphore);
     }
 
     for (auto& window : windows)
@@ -198,9 +221,24 @@ VkResult RecordAndSubmitTask::finish(CommandBuffers& recordedCommandBuffers)
     return queue->submit(submitInfo, current_fence);
 }
 
+void RecordAndSubmitTask::assignInstrumentation(ref_ptr<Instrumentation> in_instrumentation)
+{
+    instrumentation = in_instrumentation;
+
+    if (databasePager) databasePager->assignInstrumentation(instrumentation);
+    if (earlyTransferTask) earlyTransferTask->instrumentation = shareOrDuplicateForThreadSafety(instrumentation);
+    if (lateTransferTask) lateTransferTask->instrumentation = shareOrDuplicateForThreadSafety(instrumentation);
+
+    for (auto cg : commandGraphs)
+    {
+        cg->instrumentation = shareOrDuplicateForThreadSafety(instrumentation);
+        cg->getOrCreateRecordTraversal()->instrumentation = cg->instrumentation;
+    }
+}
+
 void vsg::updateTasks(RecordAndSubmitTasks& tasks, ref_ptr<CompileManager> compileManager, const CompileResult& compileResult)
 {
-    //info("vsg::updateTasks(RecordAndSubmitTasks& tasks..) ");
+    //info("vsg::updateTasks(RecordAndSubmitTasks& tasks..) compileResult.maxSlot = ", compileResult.maxSlot);
     if (compileResult.earlyDynamicData || compileResult.lateDynamicData)
     {
         for (auto& task : tasks)
@@ -217,7 +255,7 @@ void vsg::updateTasks(RecordAndSubmitTasks& tasks, ref_ptr<CompileManager> compi
         }
     }
 
-    // assign database pager if required
+    // increase maxSlot if required
     for (auto& task : tasks)
     {
         for (auto& commandGraph : task->commandGraphs)
@@ -232,7 +270,7 @@ void vsg::updateTasks(RecordAndSubmitTasks& tasks, ref_ptr<CompileManager> compi
     // assign database pager if required
     if (compileResult.containsPagedLOD)
     {
-        vsg::ref_ptr<vsg::DatabasePager> databasePager;
+        ref_ptr<DatabasePager> databasePager;
         for (auto& task : tasks)
         {
             if (task->databasePager && !databasePager) databasePager = task->databasePager;
@@ -240,7 +278,7 @@ void vsg::updateTasks(RecordAndSubmitTasks& tasks, ref_ptr<CompileManager> compi
 
         if (!databasePager)
         {
-            databasePager = vsg::DatabasePager::create();
+            databasePager = DatabasePager::create();
             for (auto& task : tasks)
             {
                 if (!task->databasePager)
@@ -254,11 +292,11 @@ void vsg::updateTasks(RecordAndSubmitTasks& tasks, ref_ptr<CompileManager> compi
         }
     }
 
-    /// handle any need Bin needs
-    for (auto& [const_view, binDetails] : compileResult.views)
+    /// handle any new Bin needs
+    for (auto& [const_view, viewDetails] : compileResult.views)
     {
-        auto view = const_cast<vsg::View*>(const_view);
-        for (auto& binNumber : binDetails.indices)
+        auto view = const_cast<View*>(const_view);
+        for (auto& binNumber : viewDetails.indices)
         {
             bool binNumberMatched = false;
             for (auto& bin : view->bins)
@@ -270,8 +308,8 @@ void vsg::updateTasks(RecordAndSubmitTasks& tasks, ref_ptr<CompileManager> compi
             }
             if (!binNumberMatched)
             {
-                vsg::Bin::SortOrder sortOrder = (binNumber < 0) ? vsg::Bin::ASCENDING : ((binNumber == 0) ? vsg::Bin::NO_SORT : vsg::Bin::DESCENDING);
-                view->bins.push_back(vsg::Bin::create(binNumber, sortOrder));
+                Bin::SortOrder sortOrder = (binNumber < 0) ? Bin::ASCENDING : ((binNumber == 0) ? Bin::NO_SORT : Bin::DESCENDING);
+                view->bins.push_back(Bin::create(binNumber, sortOrder));
             }
         }
     }

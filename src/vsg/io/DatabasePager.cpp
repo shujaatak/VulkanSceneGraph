@@ -56,14 +56,14 @@ ref_ptr<PagedLOD> DatabaseQueue::take_when_available()
     std::chrono::duration waitDuration = std::chrono::milliseconds(100);
     std::unique_lock lock(_mutex);
 
-    // wait to the conditional variable signals that an operation has been added
+    // wait until the conditional variable signals that an operation has been added
     while (_queue.empty() && _status->active())
     {
         // debug("   Waiting on condition variable B size = ", _queue.size());
         _cv.wait_for(lock, waitDuration);
     }
 
-    // if the threads we are associated with should no longer running go for a quick exit and return nothing.
+    // if the threads we are associated with should no longer be running go for a quick exit and return nothing.
     if (_queue.empty() || _status->cancel())
     {
         // debug("DatabaseQueue::take_when_available() C empty");
@@ -126,6 +126,11 @@ DatabasePager::~DatabasePager()
     }
 }
 
+void DatabasePager::assignInstrumentation(ref_ptr<Instrumentation> in_instrumentation)
+{
+    instrumentation = in_instrumentation;
+}
+
 void DatabasePager::start()
 {
     int numReadThreads = 4;
@@ -133,14 +138,19 @@ void DatabasePager::start()
     //
     // set up read thread(s)
     //
-    auto read = [](ref_ptr<DatabaseQueue> requestQueue, ref_ptr<ActivityStatus> status, DatabasePager& databasePager) {
+    auto read = [](ref_ptr<DatabaseQueue> requestQueue, ref_ptr<ActivityStatus> status, DatabasePager& databasePager, const std::string& threadName) {
         debug("Started DatabaseThread read thread");
+
+        auto local_instrumentation = shareOrDuplicateForThreadSafety(databasePager.instrumentation);
+        if (local_instrumentation) local_instrumentation->setThreadName(threadName);
 
         while (status->active())
         {
             auto plod = requestQueue->take_when_available();
             if (plod)
             {
+                CPU_INSTRUMENTATION_L1_NC(databasePager.instrumentation, "DatabasePager read", COLOR_PAGER);
+
                 uint64_t frameDelta = databasePager.frameCount - plod->frameHighResLastUsed.load();
                 if (frameDelta > 1 || !compare_exchange(plod->requestStatus, PagedLOD::ReadRequest, PagedLOD::Reading))
                 {
@@ -189,7 +199,7 @@ void DatabasePager::start()
 
     for (int i = 0; i < numReadThreads; ++i)
     {
-        _readThreads.emplace_back(read, std::ref(_requestQueue), std::ref(_status), std::ref(*this));
+        _readThreads.emplace_back(read, std::ref(_requestQueue), std::ref(_status), std::ref(*this), make_string("DatabasePager thread ", i));
     }
 }
 
@@ -207,7 +217,7 @@ void DatabasePager::request(ref_ptr<PagedLOD> plod)
     {
         if (compare_exchange(plod->requestStatus, PagedLOD::NoRequest, PagedLOD::ReadRequest))
         {
-            // debug("DatabasePager::request(", plod.get(), ") adding to requeQueue ", plod->filename, ", ", plod->priority, " plod=", plod.get());
+            // debug("DatabasePager::request(", plod.get(), ") adding to requestQueue ", plod->filename, ", ", plod->priority, " plod=", plod.get());
             _requestQueue->add(plod);
         }
         else
@@ -233,6 +243,8 @@ void DatabasePager::requestDiscarded(PagedLOD* plod)
 
 void DatabasePager::updateSceneGraph(FrameStamp* frameStamp, CompileResult& cr)
 {
+    CPU_INSTRUMENTATION_L1(instrumentation);
+
     frameCount.exchange(frameStamp ? frameStamp->frameCount : 0);
 
     auto nodes = _toMergeQueue->take_all(cr);

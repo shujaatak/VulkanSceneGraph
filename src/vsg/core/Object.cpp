@@ -29,14 +29,30 @@ Object::Object() :
 {
 }
 
-Object::Object(const Object& rhs) :
+Object::Object(const Object& rhs, const CopyOp& copyop) :
     Object()
 {
+    // assign this copy constructed object to copyop.duplicate so that it can be lated referenced.
+    if (copyop.duplicate)
+    {
+        if (auto itr = copyop.duplicate->find(&rhs); itr != copyop.duplicate->end())
+        {
+            itr->second = this;
+        }
+    }
+
     if (rhs._auxiliary && rhs._auxiliary->getConnectedObject() == &rhs)
     {
-        // the rhs's rhs._auxiliary is uniquely attached to it, so we need to create our own and copy it's ObjectMap across
+        // the rhs's auxiliary is uniquely attached to it, so we need to create our own and copy its ObjectMap across
         auto& userObjects = getOrCreateAuxiliary()->userObjects;
         userObjects = rhs._auxiliary->userObjects;
+        if (copyop.duplicate)
+        {
+            for (auto itr = userObjects.begin(); itr != userObjects.end(); ++itr)
+            {
+                itr->second = copyop(itr->second);
+            }
+        }
     }
 }
 
@@ -48,7 +64,7 @@ Object& Object::operator=(const Object& rhs)
 
     if (rhs._auxiliary)
     {
-        // the rhs's rhs._auxiliary is uniquely attached to it, so we need to create our own and copy it's ObjectMap across
+        // the rhs's auxiliary is uniquely attached to it, so we need to create our own and copy its ObjectMap across
         auto& userObjects = getOrCreateAuxiliary()->userObjects;
         userObjects = rhs._auxiliary->userObjects;
     }
@@ -82,6 +98,16 @@ void Object::_attemptDelete() const
     {
         debug("Object::_delete() ", this, " choosing not to delete");
     }
+}
+
+ref_ptr<Object> Object::clone(const CopyOp& copyop) const
+{
+    if (copyop.duplicate)
+    {
+        auto itr = copyop.duplicate->duplicates.find(this);
+        if (itr != copyop.duplicate->duplicates.end()) return itr->second;
+    }
+    return ref_ptr<Object>(const_cast<Object*>(this));
 }
 
 int Object::compare(const Object& rhs) const
@@ -129,7 +155,7 @@ void Object::write(Output& output) const
 {
     if (_auxiliary)
     {
-        // we have a unique auxiliary, need to write out it's ObjectMap entries
+        // we have a unique auxiliary, need to write out its ObjectMap entries
         auto& userObjects = _auxiliary->userObjects;
         output.writeValue<uint32_t>("userObjects", userObjects.size());
         for (auto& entry : userObjects)

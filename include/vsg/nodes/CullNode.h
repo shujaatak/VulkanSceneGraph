@@ -20,12 +20,20 @@ namespace vsg
 
     /// CullNode that enables view frustum culling on a single child node.
     /// A valid node must always be assigned to a CullNode before it's used,
-    /// for performance reasons there are no internal checks made when accessing the child.*/
+    /// for performance reasons there are no internal checks made when accessing the child.
     class VSG_DECLSPEC CullNode : public Inherit<Node, CullNode>
     {
     public:
         CullNode();
+        CullNode(const CullNode& rhs, const CopyOp& copyop = {});
         CullNode(const dsphere& in_bound, Node* in_child);
+
+        dsphere bound;
+        ref_ptr<vsg::Node> child;
+
+    public:
+        ref_ptr<Object> clone(const CopyOp& copyop = {}) const override { return CullNode::create(*this, copyop); }
+        int compare(const Object& rhs) const override;
 
         void traverse(Visitor& visitor) override { child->accept(visitor); }
         void traverse(ConstVisitor& visitor) const override { child->accept(visitor); }
@@ -33,9 +41,6 @@ namespace vsg
 
         void read(Input& input) override;
         void write(Output& output) const override;
-
-        dsphere bound;
-        ref_ptr<vsg::Node> child;
 
     protected:
         virtual ~CullNode();
