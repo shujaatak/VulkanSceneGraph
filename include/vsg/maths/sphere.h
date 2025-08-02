@@ -55,7 +55,7 @@ namespace vsg
         };
 
         constexpr t_sphere() :
-            value{0.0, 0.0, 0.0, -1.0} {}
+            value{numbers<value_type>::zero(), numbers<value_type>::zero(), numbers<value_type>::zero(), numbers<value_type>::minus_one()} {}
 
         constexpr t_sphere(const t_sphere& s) :
             value{s[0], s[1], s[2], s[3]} {}
@@ -106,7 +106,7 @@ namespace vsg
             r = rad;
         }
 
-        bool valid() const { return radius >= 0.0; }
+        bool valid() const { return radius >= numbers<value_type>::zero(); }
 
         explicit operator bool() const noexcept { return valid(); }
 
@@ -115,16 +115,18 @@ namespace vsg
 
         void reset()
         {
-            center.set(0.0, 0.0, 0.0);
-            radius = -1.0;
+            center.set(numbers<value_type>::zero(), numbers<value_type>::zero(), numbers<value_type>::zero());
+            radius = numbers<value_type>::minus_one();
         }
     };
 
-    using sphere = t_sphere<float>;   /// float sphere class
-    using dsphere = t_sphere<double>; /// double sphere class
+    using sphere = t_sphere<float>;         /// float sphere class
+    using dsphere = t_sphere<double>;       /// double sphere class
+    using ldsphere = t_sphere<long double>; /// long double sphere class
 
     VSG_type_name(vsg::sphere);
     VSG_type_name(vsg::dsphere);
+    VSG_type_name(vsg::ldsphere);
 
     template<typename T>
     constexpr bool operator==(const t_sphere<T>& lhs, const t_sphere<T>& rhs)

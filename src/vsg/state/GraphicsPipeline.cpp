@@ -13,7 +13,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/Exception.h>
 #include <vsg/core/compare.h>
 #include <vsg/io/Logger.h>
-#include <vsg/io/Options.h>
+#include <vsg/state/DynamicState.h>
 #include <vsg/state/GraphicsPipeline.h>
 #include <vsg/state/ViewportState.h>
 #include <vsg/vk/Context.h>
@@ -29,7 +29,7 @@ int GraphicsPipelineState::compare(const Object& rhs_object) const
     int result = Object::compare(rhs_object);
     if (result != 0) return result;
 
-    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+    const auto& rhs = static_cast<decltype(*this)>(rhs_object);
     return compare_value(mask, rhs.mask);
 }
 
@@ -55,14 +55,40 @@ void GraphicsPipelineState::write(Output& output) const
 
 void vsg::mergeGraphicsPipelineStates(Mask mask, GraphicsPipelineStates& dest_PipelineStates, ref_ptr<GraphicsPipelineState> src_PipelineState)
 {
-    if ((mask & src_PipelineState->mask) == 0) return;
+    if (!src_PipelineState || (mask & src_PipelineState->mask) == 0) return;
+
+    auto* src_DynamicState = src_PipelineState->cast<DynamicState>();
 
     // replace any entries in the dest_PipelineStates that have the same type as src_PipelineState
     for (auto& original_pipelineState : dest_PipelineStates)
     {
         if (original_pipelineState->type_info() == src_PipelineState->type_info())
         {
-            original_pipelineState = src_PipelineState;
+            if (src_DynamicState)
+            {
+                auto original_DynamicState = original_pipelineState->cast<DynamicState>();
+                if (original_DynamicState->dynamicStates.empty())
+                {
+                    original_pipelineState = src_PipelineState;
+                }
+                else if (original_DynamicState->dynamicStates != src_DynamicState->dynamicStates)
+                {
+                    auto new_DynamicState = DynamicState::create(original_DynamicState->dynamicStates);
+                    for (auto state : src_DynamicState->dynamicStates)
+                    {
+                        if (std::find(new_DynamicState->dynamicStates.begin(), new_DynamicState->dynamicStates.end(), state) == new_DynamicState->dynamicStates.end())
+                        {
+                            new_DynamicState->dynamicStates.push_back(state);
+                        }
+                    }
+
+                    original_pipelineState = new_DynamicState;
+                }
+            }
+            else
+            {
+                original_pipelineState = src_PipelineState;
+            }
             return;
         }
     }
@@ -71,7 +97,7 @@ void vsg::mergeGraphicsPipelineStates(Mask mask, GraphicsPipelineStates& dest_Pi
 
 void vsg::mergeGraphicsPipelineStates(Mask mask, GraphicsPipelineStates& dest_PipelineStates, const GraphicsPipelineStates& src_PipelineStates)
 {
-    for (auto& src_PipelineState : src_PipelineStates)
+    for (const auto& src_PipelineState : src_PipelineStates)
     {
         mergeGraphicsPipelineStates(mask, dest_PipelineStates, src_PipelineState);
     }
@@ -102,7 +128,7 @@ int GraphicsPipeline::compare(const Object& rhs_object) const
     int result = Object::compare(rhs_object);
     if (result != 0) return result;
 
-    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+    const auto& rhs = static_cast<decltype(*this)>(rhs_object);
 
     if ((result = compare_pointer_container(stages, rhs.stages))) return result;
     if ((result = compare_pointer_container(pipelineStates, rhs.pipelineStates))) return result;
@@ -140,9 +166,24 @@ void GraphicsPipeline::compile(Context& context)
 
     if (!_implementation[viewID])
     {
+        GraphicsPipelineStates combined_pipelineStates;
+        combined_pipelineStates.reserve(context.defaultPipelineStates.size() + pipelineStates.size() + context.overridePipelineStates.size());
+        mergeGraphicsPipelineStates(context.mask, combined_pipelineStates, context.defaultPipelineStates);
+        mergeGraphicsPipelineStates(context.mask, combined_pipelineStates, pipelineStates);
+        mergeGraphicsPipelineStates(context.mask, combined_pipelineStates, context.overridePipelineStates);
+
+        for (const auto& imp : _implementation)
+        {
+            if (imp && vsg::compare_pointer_container(imp->_pipelineStates, combined_pipelineStates) == 0)
+            {
+                _implementation[viewID] = imp;
+                return;
+            }
+        }
+
         // compile shaders if required
         bool requiresShaderCompiler = false;
-        for (auto& shaderStage : stages)
+        for (const auto& shaderStage : stages)
         {
             if (shaderStage->module)
             {
@@ -174,12 +215,6 @@ void GraphicsPipeline::compile(Context& context)
             shaderStage->compile(context);
         }
 
-        GraphicsPipelineStates combined_pipelineStates;
-        combined_pipelineStates.reserve(context.defaultPipelineStates.size() + pipelineStates.size() + context.overridePipelineStates.size());
-        mergeGraphicsPipelineStates(context.mask, combined_pipelineStates, context.defaultPipelineStates);
-        mergeGraphicsPipelineStates(context.mask, combined_pipelineStates, pipelineStates);
-        mergeGraphicsPipelineStates(context.mask, combined_pipelineStates, context.overridePipelineStates);
-
         _implementation[viewID] = GraphicsPipeline::Implementation::create(context, context.device, context.renderPass, layout, stages, combined_pipelineStates, subpass);
     }
 }
@@ -189,6 +224,7 @@ void GraphicsPipeline::compile(Context& context)
 // GraphicsPipeline::Implementation
 //
 GraphicsPipeline::Implementation::Implementation(Context& context, Device* device, const RenderPass* renderPass, const PipelineLayout* pipelineLayout, const ShaderStages& shaderStages, const GraphicsPipelineStates& pipelineStates, uint32_t subpass) :
+    _pipelineStates(pipelineStates),
     _device(device)
 {
     VkGraphicsPipelineCreateInfo pipelineInfo = {};
@@ -240,7 +276,7 @@ GraphicsPipeline::Implementation::~Implementation()
 //
 // BindGraphicsPipeline
 //
-BindGraphicsPipeline::BindGraphicsPipeline(GraphicsPipeline* in_pipeline) :
+BindGraphicsPipeline::BindGraphicsPipeline(ref_ptr<GraphicsPipeline> in_pipeline) :
     Inherit(0), // slot 0
     pipeline(in_pipeline)
 {
@@ -255,7 +291,7 @@ int BindGraphicsPipeline::compare(const Object& rhs_object) const
     int result = StateCommand::compare(rhs_object);
     if (result != 0) return result;
 
-    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+    const auto& rhs = static_cast<decltype(*this)>(rhs_object);
     return compare_pointer(pipeline, rhs.pipeline);
 }
 

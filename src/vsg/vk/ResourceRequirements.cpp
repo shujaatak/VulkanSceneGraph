@@ -36,9 +36,14 @@ using namespace vsg;
 //
 // ResourceRequirements
 //
-ResourceRequirements::ResourceRequirements(ref_ptr<ResourceHints> hints)
+ResourceRequirements::ResourceRequirements()
 {
     viewDetailsStack.push(ResourceRequirements::ViewDetails{});
+}
+
+ResourceRequirements::ResourceRequirements(ref_ptr<ResourceHints> hints) :
+    vsg::ResourceRequirements()
+{
     if (hints) apply(*hints);
 }
 
@@ -59,7 +64,7 @@ DescriptorPoolSizes ResourceRequirements::computeDescriptorPoolSizes() const
 
 void ResourceRequirements::apply(const ResourceHints& resourceHints)
 {
-    if (resourceHints.maxSlot > maxSlot) maxSlot = resourceHints.maxSlot;
+    maxSlots.merge(resourceHints.maxSlots);
 
     if (!resourceHints.descriptorPoolSizes.empty() || resourceHints.numDescriptorSets > 0)
     {
@@ -71,9 +76,16 @@ void ResourceRequirements::apply(const ResourceHints& resourceHints)
         }
     }
 
-    numLightsRange = resourceHints.numLightsRange;
-    numShadowMapsRange = resourceHints.numShadowMapsRange;
-    shadowMapSize = resourceHints.shadowMapSize;
+    minimumBufferSize = std::max(minimumBufferSize, resourceHints.minimumBufferSize);
+    minimumDeviceMemorySize = std::max(minimumDeviceMemorySize, resourceHints.minimumDeviceMemorySize);
+    minimumStagingBufferSize = std::max(minimumStagingBufferSize, resourceHints.minimumStagingBufferSize);
+
+    numLightsRange = std::max(numLightsRange, resourceHints.numLightsRange);
+    numShadowMapsRange = std::max(numShadowMapsRange, resourceHints.numShadowMapsRange);
+    shadowMapSize = std::max(shadowMapSize, resourceHints.shadowMapSize);
+
+    dataTransferHint = resourceHints.dataTransferHint;
+    viewportStateHint = resourceHints.viewportStateHint;
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -84,7 +96,7 @@ ref_ptr<ResourceHints> CollectResourceRequirements::createResourceHints(uint32_t
 {
     auto resourceHints = vsg::ResourceHints::create();
 
-    resourceHints->maxSlot = requirements.maxSlot;
+    resourceHints->maxSlots = requirements.maxSlots;
     resourceHints->numDescriptorSets = static_cast<uint32_t>(requirements.computeNumDescriptorSets() * tileMultiplier);
     resourceHints->descriptorPoolSizes = requirements.computeDescriptorPoolSizes();
 
@@ -143,8 +155,7 @@ void CollectResourceRequirements::apply(const PagedLOD& plod)
 
 void CollectResourceRequirements::apply(const StateCommand& stateCommand)
 {
-    if (stateCommand.slot > requirements.maxSlot) requirements.maxSlot = stateCommand.slot;
-
+    if (stateCommand.slot > requirements.maxSlots.state) requirements.maxSlots.state = stateCommand.slot;
     stateCommand.traverse(*this);
 }
 
@@ -183,7 +194,7 @@ void CollectResourceRequirements::apply(const DescriptorBuffer& descriptorBuffer
     if (registerDescriptor(descriptorBuffer))
     {
         //info("CollectResourceRequirements::apply(const DescriptorBuffer& descriptorBuffer) ", &descriptorBuffer);
-        for (auto& bufferInfo : descriptorBuffer.bufferInfoList) apply(bufferInfo);
+        for (const auto& bufferInfo : descriptorBuffer.bufferInfoList) apply(bufferInfo);
     }
 }
 
@@ -192,7 +203,7 @@ void CollectResourceRequirements::apply(const DescriptorImage& descriptorImage)
     if (registerDescriptor(descriptorImage))
     {
         //info("CollectResourceRequirements::apply(const DescriptorImage& descriptorImage) ", &descriptorImage);
-        for (auto& imageInfo : descriptorImage.imageInfoList) apply(imageInfo);
+        for (const auto& imageInfo : descriptorImage.imageInfoList) apply(imageInfo);
     }
 }
 
@@ -201,8 +212,18 @@ void CollectResourceRequirements::apply(const Light& light)
     requirements.viewDetailsStack.top().lights.insert(&light);
 }
 
+void CollectResourceRequirements::apply(const RenderGraph& rg)
+{
+    if (rg.viewportState) requirements.maxSlots.view = std::max(requirements.maxSlots.view, rg.viewportState->slot);
+    rg.traverse(*this);
+}
+
 void CollectResourceRequirements::apply(const View& view)
 {
+    if (view.camera && view.camera->viewportState)
+    {
+        requirements.maxSlots.view = std::max(requirements.maxSlots.view, view.camera->viewportState->slot);
+    }
 
     if (auto itr = requirements.views.find(&view); itr != requirements.views.end())
     {
@@ -226,8 +247,6 @@ void CollectResourceRequirements::apply(const View& view)
 
     if (view.viewDependentState)
     {
-        if (requirements.maxSlot < 2) requirements.maxSlot = 2;
-
         view.viewDependentState->init(requirements);
 
         view.viewDependentState->accept(*this);
@@ -257,24 +276,24 @@ void CollectResourceRequirements::apply(const Bin& bin)
 
 void CollectResourceRequirements::apply(const Geometry& geometry)
 {
-    for (auto& bufferInfo : geometry.arrays) apply(bufferInfo);
+    for (const auto& bufferInfo : geometry.arrays) apply(bufferInfo);
     apply(geometry.indices);
 }
 
 void CollectResourceRequirements::apply(const VertexDraw& vd)
 {
-    for (auto& bufferInfo : vd.arrays) apply(bufferInfo);
+    for (const auto& bufferInfo : vd.arrays) apply(bufferInfo);
 }
 
 void CollectResourceRequirements::apply(const VertexIndexDraw& vid)
 {
-    for (auto& bufferInfo : vid.arrays) apply(bufferInfo);
+    for (const auto& bufferInfo : vid.arrays) apply(bufferInfo);
     apply(vid.indices);
 }
 
 void CollectResourceRequirements::apply(const BindVertexBuffers& bvb)
 {
-    for (auto& bufferInfo : bvb.arrays) apply(bufferInfo);
+    for (const auto& bufferInfo : bvb.arrays) apply(bufferInfo);
 }
 
 void CollectResourceRequirements::apply(const BindIndexBuffer& bib)
@@ -286,14 +305,7 @@ void CollectResourceRequirements::apply(ref_ptr<BufferInfo> bufferInfo)
 {
     if (bufferInfo && bufferInfo->data && bufferInfo->data->dynamic())
     {
-        if (bufferInfo->data->properties.dataVariance == DYNAMIC_DATA)
-        {
-            requirements.earlyDynamicData.bufferInfos.push_back(bufferInfo);
-        }
-        else // DYNAMIC_DATA_TRANSFER_AFTER_RECORD)
-        {
-            requirements.lateDynamicData.bufferInfos.push_back(bufferInfo);
-        }
+        requirements.dynamicData.bufferInfos.push_back(bufferInfo);
     }
 }
 
@@ -305,14 +317,7 @@ void CollectResourceRequirements::apply(ref_ptr<ImageInfo> imageInfo)
         auto& data = imageInfo->imageView->image->data;
         if (data && data->dynamic())
         {
-            if (data->properties.dataVariance == DYNAMIC_DATA)
-            {
-                requirements.earlyDynamicData.imageInfos.push_back(imageInfo);
-            }
-            else // DYNAMIC_DATA_TRANSFER_AFTER_RECORD)
-            {
-                requirements.lateDynamicData.imageInfos.push_back(imageInfo);
-            }
+            requirements.dynamicData.imageInfos.push_back(imageInfo);
         }
     }
 }

@@ -120,7 +120,7 @@ namespace vsg
         Presentations presentations;
 
         /// Create RecordAndSubmitTask and Presentation objects configured to manage specified commandGraphs and assign them to the viewer.
-        /// Replace any prexisting setup.
+        /// Replace any preexisting setup.
         virtual void assignRecordAndSubmitTaskAndPresentation(CommandGraphs commandGraphs);
 
         /// Add command graphs creating RecordAndSubmitTask/Presentation objects where appropriate.
@@ -153,11 +153,12 @@ namespace vsg
 
         bool _close = false;
 
-        ref_ptr<FrameStamp> _frameStamp;
-
         Windows _windows;
 
+        bool _firstFrame = true;
         clock::time_point _start_point;
+        ref_ptr<FrameStamp> _frameStamp;
+
         UIEvents _events;
         EventHandlers _eventHandlers;
 

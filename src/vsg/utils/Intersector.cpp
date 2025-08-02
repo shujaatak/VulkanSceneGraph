@@ -27,6 +27,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/nodes/VertexDraw.h>
 #include <vsg/nodes/VertexIndexDraw.h>
 #include <vsg/state/GraphicsPipeline.h>
+#include <vsg/text/CpuLayoutTechnique.h>
+#include <vsg/text/GpuLayoutTechnique.h>
 #include <vsg/utils/Intersector.h>
 
 using namespace vsg;
@@ -192,16 +194,33 @@ void Intersector::apply(const BufferInfo& bufferInfo)
     if (bufferInfo.data) bufferInfo.data->accept(*this);
 }
 
+void Intersector::apply(const ubyteArray& array)
+{
+    ubyte_indices = &array;
+    ushort_indices = nullptr;
+    uint_indices = nullptr;
+}
+
 void Intersector::apply(const ushortArray& array)
 {
+    ubyte_indices = nullptr;
     ushort_indices = &array;
     uint_indices = nullptr;
 }
 
 void Intersector::apply(const uintArray& array)
 {
+    ubyte_indices = nullptr;
     ushort_indices = nullptr;
     uint_indices = &array;
+}
+
+void Intersector::apply(const TextTechnique& technique)
+{
+    if (auto cpuTechnique = technique.cast<CpuLayoutTechnique>())
+        cpuTechnique->scenegraph->accept(*this);
+    if (auto gpuTechnique = technique.cast<GpuLayoutTechnique>())
+        gpuTechnique->scenegraph->accept(*this);
 }
 
 void Intersector::apply(const Draw& draw)

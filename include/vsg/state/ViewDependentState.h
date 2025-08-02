@@ -20,6 +20,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/state/BindDescriptorSet.h>
 #include <vsg/state/DescriptorBuffer.h>
 #include <vsg/state/DescriptorImage.h>
+#include <vsg/utils/ShaderSet.h>
 
 namespace vsg
 {
@@ -153,7 +154,7 @@ namespace vsg
         double lambda = 0.5;
 
         // map of Light's that we wish to override their ShadowSettings,
-        // assigning shadowSettingsOverride[{}] = shadowSettings will override all Light not otherwise explictly matched.
+        // assigning shadowSettingsOverride[{}] = shadowSettings will override all Light not otherwise explicitly matched.
         std::map<ref_ptr<const Light>, ref_ptr<ShadowSettings>> shadowSettingsOverride;
 
         virtual ref_ptr<ShadowSettings> getActiveShadowSettings(const Light* light) const;

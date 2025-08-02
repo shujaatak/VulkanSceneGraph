@@ -66,9 +66,10 @@ ref_ptr<RecordTraversal> CommandGraph::getOrCreateRecordTraversal()
 {
     //CPU_INSTRUMENTATION_L1(instrumentation);
     if (!recordTraversal)
-    {
-        recordTraversal = RecordTraversal::create(maxSlot);
-    }
+        recordTraversal = RecordTraversal::create(maxSlots);
+    else
+        recordTraversal->getState()->reserve(maxSlots);
+
     return recordTraversal;
 }
 
@@ -78,16 +79,12 @@ void CommandGraph::record(ref_ptr<RecordedCommandBuffers> recordedCommandBuffers
 
     if (window && !window->visible())
     {
+        //vsg::info("CommandGraph::record() ", frameStamp->frameCount, " window not visible.");
         return;
     }
 
     // create the RecordTraversal if it isn't already created
     getOrCreateRecordTraversal();
-
-    if ((maxSlot + 1) != recordTraversal->getState()->stateStacks.size())
-    {
-        recordTraversal->getState()->stateStacks.resize(maxSlot + 1);
-    }
 
     recordTraversal->recordedCommandBuffers = recordedCommandBuffers;
     recordTraversal->setFrameStamp(frameStamp);
@@ -117,7 +114,7 @@ void CommandGraph::record(ref_ptr<RecordedCommandBuffers> recordedCommandBuffers
 
     commandBuffer->numDependentSubmissions().fetch_add(1);
 
-    recordTraversal->getState()->_commandBuffer = commandBuffer;
+    recordTraversal->getState()->connect(commandBuffer);
 
     // or select index when maps to a dormant CommandBuffer
     VkCommandBuffer vk_commandBuffer = *commandBuffer;

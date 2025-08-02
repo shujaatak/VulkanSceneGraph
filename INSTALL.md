@@ -28,11 +28,17 @@
 
 ### Installing dependencies
 
-* Ubuntu:  
-	`sudo apt-get install cmake-curses-gui g++ git libvulkan-dev`
+VulkanSceneGraph build requires C++ 17, CMake and vulkan as a required dependency, and has an optional dependency of glslang 14.0 or later which is used for applications that required runtime shader compilation. Latest Linux releases, such as Ubuntu 24.04, have a modern enough version of glslang out of the box so the following instructions will work out of the box, but with older distributions the glslang version will predate 14 and is not supported by the VulkanSceneGraph, so if you require runtime shader compilation you will need to either use the version provided by a recent [VulkanSDK](https://vulkan.lunarg.com/) distribution or compile and install [glslang](https://github.com/KhronosGroup/glslang) from source.
 
-* Gentoo:  
+* Ubuntu family:
+	`sudo apt-get install cmake-curses-gui g++ git libvulkan-dev glslang-dev glslang-tools`
+
+* Fedora:
+	`dnf install git cmake ninja-build gcc-c++ libxcb-devel vulkan-loader-devel glslc glslang-devel`
+
+* Gentoo:
 	`emerge dev-util/vulkan-tools`
+
 
 ### Build
 Command line instructions for default build of static library (.a) in source:
@@ -40,8 +46,7 @@ Command line instructions for default build of static library (.a) in source:
     git clone https://github.com/vsg-dev/VulkanSceneGraph.git
     cd VulkanSceneGraph
     cmake .
-    make -j 8
-    make install
+    cmake --build . -j 16 -t install
 
 Command line instructions for building shared library (.so) out of source:
 
@@ -49,8 +54,7 @@ Command line instructions for building shared library (.so) out of source:
     mkdir vsg-shared-build
     cd vsg-shared-build
     cmake ../VulkanSceneGraph -DBUILD_SHARED_LIBS=ON
-    make -j 8
-    make install
+    cmake --build . -j 16 -t install
 
 ---
 
@@ -88,15 +92,27 @@ More detailed Android platform instructions can be found [below](#detailed-instr
 
 ---
 
-## Quick build instructions for macOS using Xcode 9
+## Quick build instructions for macOS using standard Makefiles
 
-Command line instructions for default build of static library (.lib) in source:
+On the Mac you must install Xcode from the Apple App Store. It contains C++-17 as well 
+as tools like make and git. Don't use Xcode directly for building
+VSG, since the new code signing settings mess up all executables and
+shared libraries.
+
+Command line instructions for default build of static library (.a) in source:
+Be sure to have the required software packages installed (see Linux). Get the
+Vulkan SDK from https://vulkan.lunarg.com. You also need glslang. The easiest way 
+to get it is installation via the **homebrew** package manager (https://brew.sh).
+After installation of **homebrew** call:
+
+	brew cmake
+	brew glslang
+	brew clang-format
 
     git clone https://github.com/vsg-dev/VulkanSceneGraph.git
     cd VulkanSceneGraph
-    cmake . -G "Xcode"
-
-After running cmake open the generated VSG.xcodeproj file and build the All target. Once built you can run the install target. Please note that for release builds you currently need to use the Archive option in xcode. This will rebuild every time so you can just select the install target and run Archive which will also build the All target.
+    cmake .
+    cmake --build . -j 8
 
 ---
 
@@ -207,7 +223,7 @@ For example, a bare minimum CMakeLists.txt file adding the mentioned cmake targe
 
 ### Using VSG provided cmake macro to generate cmake support files
 
-Projects that install a library must generate some cmake-related files so that the library can be found by ```find_package()```. To simplify the generation of these files, the cmake macro ```vsg_add_cmake_support_files()``` has been added. 
+Projects that install a library must generate some cmake-related files so that the library can be found by ```find_package()```. To simplify the generation of these files, the cmake macro ```vsg_add_cmake_support_files()``` has been added.
 
 In addition to calling the macro, it requires a template for creating the xxxConfig.cmake file, as given in the following example:
 
@@ -306,7 +322,7 @@ macOS does not natively support Vulkan. However the excellent MoltenVK library h
 
 [Vulkan Downloads](https://vulkan.lunarg.com/sdk/home#mac)
 
-Download the sdk and unpack it. There's no form of installer but you're able to place the root sdk folder anywhere on your machine. The sdk contains detailed instuctions on how to setup MoltenVK to work on your machine as well as how to redistribute your application contained in the /Documentation/getting_started_macos.md file.
+Download the sdk and unpack it. There's no form of installer but you're able to place the root sdk folder anywhere on your machine. The sdk contains detailed instructions on how to setup MoltenVK to work on your machine as well as how to redistribute your application contained in the /Documentation/getting_started_macos.md file.
 
 As with other platforms we need the VULKAN_SDK variable which should point to your downloaded sdk folder. Specifically the macOS subfolder of the sdk. This is needed so CMake can find the sdk. Unique to macOS we also need to set environment variables pointing to a few files within the sdk. Again the getting started document in the sdk has detailed information relating to these. A quick cheat sheet is provided here, if you use a .bash_profile file in your user folder you can add the following.
 
@@ -323,7 +339,7 @@ So now we're ready to build VSG. With the SDK installed this is very similar to 
 	git clone https://github.com/vsg-dev/VulkanSceneGraph.git
 	cd VulkanSceneGraph
 	cmake . -G "Xcode"
-	
+
 Once CMake has finished you can open the generated Xcode project and build the 'install' target. This will build VSG and install the headers and generated library onto your machine.
 
 Again, as with other platforms it's useful to now set your CMAKE_PREFIX_PATH to point to the VSG library we have just installed. If you've installed to the default location you can add the following to your .bash_profile file.

@@ -12,7 +12,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <vsg/core/Exception.h>
 #include <vsg/core/compare.h>
-#include <vsg/io/Options.h>
 #include <vsg/state/PipelineLayout.h>
 #include <vsg/vk/Context.h>
 
@@ -46,12 +45,32 @@ PipelineLayout::~PipelineLayout()
 {
 }
 
+std::pair<bool, uint32_t> vsg::PipelineLayout::computeCompatibility(const PipelineLayout& other)
+{
+    auto result = std::make_pair<bool, uint32_t>(compare_value_container(pushConstantRanges, other.pushConstantRanges) == 0, 0);
+    if (!result.first)
+        return result;
+#ifdef VK_EXT_graphics_pipeline_library
+    if ((flags & VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT) != (other.flags & VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT))
+        return result;
+#endif
+    for (result.second = 0; result.second < std::min(setLayouts.size(), other.setLayouts.size()); ++result.second)
+    {
+        // if this is a partial layout for a graphics pipeline library, it may be made compatible later
+        if (!setLayouts[result.second] || !other.setLayouts[result.second])
+            continue;
+        if (compare_value_container(setLayouts[result.second]->bindings, other.setLayouts[result.second]->bindings) != 0)
+            break;
+    }
+    return result;
+}
+
 int PipelineLayout::compare(const Object& rhs_object) const
 {
     int result = Object::compare(rhs_object);
     if (result != 0) return result;
 
-    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+    const auto& rhs = static_cast<decltype(*this)>(rhs_object);
 
     if ((result = compare_value(flags, rhs.flags))) return result;
     if ((result = compare_pointer_container(setLayouts, rhs.setLayouts))) return result;
@@ -86,13 +105,13 @@ void PipelineLayout::write(Output& output) const
     output.writeValue<uint32_t>("flags", flags);
 
     output.writeValue<uint32_t>("setLayouts", setLayouts.size());
-    for (auto& descriptorLayout : setLayouts)
+    for (const auto& descriptorLayout : setLayouts)
     {
         output.writeObject("descriptorLayout", descriptorLayout);
     }
 
     output.writeValue<uint32_t>("pushConstantRanges", pushConstantRanges.size());
-    for (auto& pushConstantRange : pushConstantRanges)
+    for (const auto& pushConstantRange : pushConstantRanges)
     {
         output.writeValue<uint32_t>("stageFlags", pushConstantRange.stageFlags);
         output.write("offset", pushConstantRange.offset);

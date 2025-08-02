@@ -51,6 +51,7 @@ namespace vsg
                 value_type s, t, p, q;
             };
             t_vec3<T> xyz;
+            t_vec3<T> rgb;
         };
 
         constexpr t_vec4() :
@@ -152,7 +153,7 @@ namespace vsg
         {
             if constexpr (std::is_floating_point_v<value_type>)
             {
-                value_type inv = static_cast<value_type>(1.0) / rhs;
+                value_type inv = numbers<value_type>::one() / rhs;
                 value[0] *= inv;
                 value[1] *= inv;
                 value[2] *= inv;
@@ -170,20 +171,22 @@ namespace vsg
 
         operator VkClearColorValue() const noexcept { return VkClearColorValue{{r, g, b, a}}; }
 
-        explicit operator bool() const noexcept { return value[0] != 0.0 || value[1] != 0.0 || value[2] != 0.0 || value[3] != 0.0; }
+        explicit operator bool() const noexcept { return value[0] != numbers<value_type>::zero() || value[1] != numbers<value_type>::zero() || value[2] != numbers<value_type>::zero() || value[3] != numbers<value_type>::zero(); }
     };
 
-    using vec4 = t_vec4<float>;      // float 4D vector
-    using dvec4 = t_vec4<double>;    // double 4D vector
-    using bvec4 = t_vec4<int8_t>;    // signed 8 bit integer 4D vector
-    using svec4 = t_vec4<int16_t>;   //  signed 16 bit integer 4D vector
-    using ivec4 = t_vec4<int32_t>;   //  signed 32 bit integer 4D vector
-    using ubvec4 = t_vec4<uint8_t>;  //  unsigned 8 bit integer 4D vector
-    using usvec4 = t_vec4<uint16_t>; //  unsigned 16 bit integer 4D vector
-    using uivec4 = t_vec4<uint32_t>; //  unsigned 32 bit integer 4D vector
+    using vec4 = t_vec4<float>;         // float 4D vector
+    using dvec4 = t_vec4<double>;       // double 4D vector
+    using ldvec4 = t_vec4<long double>; // long double 4D vector
+    using bvec4 = t_vec4<int8_t>;       // signed 8 bit integer 4D vector
+    using svec4 = t_vec4<int16_t>;      //  signed 16 bit integer 4D vector
+    using ivec4 = t_vec4<int32_t>;      //  signed 32 bit integer 4D vector
+    using ubvec4 = t_vec4<uint8_t>;     //  unsigned 8 bit integer 4D vector
+    using usvec4 = t_vec4<uint16_t>;    //  unsigned 16 bit integer 4D vector
+    using uivec4 = t_vec4<uint32_t>;    //  unsigned 32 bit integer 4D vector
 
     VSG_type_name(vsg::vec4);
     VSG_type_name(vsg::dvec4);
+    VSG_type_name(vsg::ldvec4);
     VSG_type_name(vsg::bvec4);
     VSG_type_name(vsg::svec4);
     VSG_type_name(vsg::ivec4);
@@ -250,7 +253,7 @@ namespace vsg
     {
         if constexpr (std::is_floating_point_v<T>)
         {
-            T inv = static_cast<T>(1.0) / rhs;
+            T inv = numbers<T>::one() / rhs;
             return t_vec4<T>(lhs[0] * inv, lhs[1] * inv, lhs[2] * inv, lhs[3] * inv);
         }
         else
@@ -280,7 +283,7 @@ namespace vsg
     template<typename T>
     constexpr t_vec4<T> mix(const t_vec4<T>& start, const t_vec4<T>& end, T r)
     {
-        T one_minus_r = 1 - r;
+        T one_minus_r = numbers<T>::one() - r;
         return t_vec4<T>(start[0] * one_minus_r + end[0] * r,
                          start[1] * one_minus_r + end[1] * r,
                          start[2] * one_minus_r + end[2] * r,

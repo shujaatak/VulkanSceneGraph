@@ -12,6 +12,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <vsg/io/VSG.h>
 #include <vsg/io/glsl.h>
+#include <vsg/io/json.h>
 #include <vsg/io/read.h>
 #include <vsg/io/spirv.h>
 #include <vsg/io/tile.h>
@@ -50,6 +51,11 @@ ref_ptr<Object> vsg::read(const Path& filename, ref_ptr<const Options> options)
             spirv rw;
             return rw.read(filename, options);
         }
+        else if (ext == ".json")
+        {
+            json rw;
+            return rw.read(filename, options);
+        }
         else if (glsl::extensionSupported(ext))
         {
             glsl rw;
@@ -76,10 +82,14 @@ ref_ptr<Object> vsg::read(const Path& filename, ref_ptr<const Options> options)
 
             if (load->object && options && options->findDynamicObjects && options->propagateDynamicObjects)
             {
-                // invoke the find and propogate visitiors to collate all the dynamic objects that will need to be cloned.
+                // invoke the find and propagate visitors to collate all the dynamic objects that will need to be cloned.
+
+                std::scoped_lock<std::mutex> fdo_lock(options->findDynamicObjects->mutex);
+
                 options->findDynamicObjects->dynamicObjects.clear();
                 load->object->accept(*(options->findDynamicObjects));
 
+                std::scoped_lock<std::mutex> pdo_lock(options->propagateDynamicObjects->mutex);
                 options->propagateDynamicObjects->dynamicObjects.swap(options->findDynamicObjects->dynamicObjects);
                 load->object->accept(*(options->propagateDynamicObjects));
 
@@ -121,7 +131,7 @@ PathObjects vsg::read(const Paths& filenames, ref_ptr<const Options> options)
     if (operationThreads && filenames.size() > 1)
     {
         // set up the entries container for operations to write to.
-        for (auto& filename : filenames)
+        for (const auto& filename : filenames)
         {
             entries[filename] = nullptr;
         }

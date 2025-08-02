@@ -67,7 +67,7 @@ namespace vsg
         vec4 color = {1.0f, 1.0f, 1.0f, 1.0f};
         mat4 transform;
 
-        /// cullNode flag indicates whether a CullNode should decorate the creted subgraph
+        /// cullNode flag indicates whether a CullNode should decorate the created subgraph
         bool cullNode = false;
 
         template<typename T>
@@ -152,6 +152,7 @@ namespace vsg
         GeometryMap _capsules;
         GeometryMap _cones;
         GeometryMap _cylinders;
+        GeometryMap _disks;
         GeometryMap _quads;
         GeometryMap _spheres;
         GeometryMap _heightfields;

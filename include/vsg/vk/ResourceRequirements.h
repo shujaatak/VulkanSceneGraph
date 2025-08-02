@@ -29,8 +29,9 @@ namespace vsg
     class VSG_DECLSPEC ResourceRequirements
     {
     public:
-        ResourceRequirements(ref_ptr<ResourceHints> hints = {});
+        ResourceRequirements();
         ResourceRequirements(const ResourceRequirements& rhs) = default;
+        explicit ResourceRequirements(ref_ptr<ResourceHints> hints);
 
         ResourceRequirements& operator=(const ResourceRequirements& rhs) = default;
 
@@ -79,8 +80,7 @@ namespace vsg
             }
         };
 
-        DynamicData earlyDynamicData;
-        DynamicData lateDynamicData;
+        DynamicData dynamicData;
 
         Descriptors descriptors;
         DescriptorSets descriptorSets;
@@ -88,16 +88,21 @@ namespace vsg
         Views views;
         ViewDetailStack viewDetailsStack;
 
-        uint32_t maxSlot = 0;
+        Slots maxSlots;
         uint32_t externalNumDescriptorSets = 0;
         bool containsPagedLOD = false;
 
         VkDeviceSize minimumBufferSize = 16 * 1024 * 1024;
         VkDeviceSize minimumDeviceMemorySize = 16 * 1024 * 1024;
 
+        VkDeviceSize minimumStagingBufferSize = 16 * 1024 * 1024;
+
         uivec2 numLightsRange = {8, 1024};
         uivec2 numShadowMapsRange = {0, 64};
         uivec2 shadowMapSize = {2048, 2048};
+
+        DataTransferHint dataTransferHint = COMPILE_TRAVERSAL_USE_TRANSFER_TASK;
+        uint32_t viewportStateHint = DYNAMIC_VIEWPORTSTATE;
     };
     VSG_type_name(vsg::ResourceRequirements);
 
@@ -126,6 +131,7 @@ namespace vsg
         void apply(const DescriptorImage& descriptorImage) override;
         void apply(const PagedLOD& plod) override;
         void apply(const Light& light) override;
+        void apply(const RenderGraph& rg) override;
         void apply(const View& view) override;
         void apply(const DepthSorted& depthSorted) override;
         void apply(const Layer& layer) override;

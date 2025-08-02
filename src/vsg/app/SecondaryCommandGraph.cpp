@@ -81,15 +81,8 @@ void SecondaryCommandGraph::record(ref_ptr<RecordedCommandBuffers> recordedComma
         return;
     }
 
-    if (!recordTraversal)
-    {
-        recordTraversal = RecordTraversal::create(maxSlot);
-    }
-
-    if ((maxSlot + 1) != recordTraversal->getState()->stateStacks.size())
-    {
-        recordTraversal->getState()->stateStacks.resize(maxSlot + 1);
-    }
+    // create the RecordTraversal if it isn't already created
+    getOrCreateRecordTraversal();
 
     recordTraversal->recordedCommandBuffers = recordedCommandBuffers;
     recordTraversal->setFrameStamp(frameStamp);
@@ -138,7 +131,7 @@ void SecondaryCommandGraph::record(ref_ptr<RecordedCommandBuffers> recordedComma
     inheritanceInfo.pipelineStatistics = pipelineStatistics;
     beginInfo.pInheritanceInfo = &inheritanceInfo;
 
-    if (auto activeRenderPass = getRenderPass())
+    if (const auto activeRenderPass = getRenderPass())
         inheritanceInfo.renderPass = *(activeRenderPass);
     else
         inheritanceInfo.renderPass = VK_NULL_HANDLE;

@@ -329,6 +329,8 @@ typedef void (VKAPI_PTR *PFN_vkResetQueryPoolEXT)(VkDevice device, VkQueryPool q
 #    define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES VkStructureType(1000199000)
 #    define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES VkStructureType(1000257000)
 
+#    define VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT VkMemoryAllocateFlagBits(0x00000002)
+
 typedef enum VkResolveModeFlagBits
 {
     VK_RESOLVE_MODE_NONE = 0,
@@ -805,6 +807,10 @@ typedef VkDeviceAddress(VKAPI_PTR* PFN_vkGetBufferDeviceAddressKHR_Compatibility
 //
 //  Definitions not provided prior to 1.3.211
 //
+#if VK_HEADER_VERSION < 204
+#define VK_API_VERSION_1_3 VK_MAKE_VERSION(1, 3, 0)
+#endif
+
 #if VK_HEADER_VERSION < 211
 typedef enum VkInstanceCreateFlagBits {
     VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR = 0x00000001,
@@ -815,9 +821,6 @@ typedef VkFlags VkInstanceCreateFlags;
 #define VK_KHR_portability_enumeration 1
 #define VK_KHR_PORTABILITY_ENUMERATION_SPEC_VERSION 1
 #define VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME "VK_KHR_portability_enumeration"
-
-#define VK_API_VERSION_1_3 VK_MAKE_VERSION(1, 3, 0)
-
 #endif
 
 //

@@ -50,8 +50,11 @@ namespace vsg
         void apply(const DrawIndexed& drawIndexed) override;
 
         void apply(const BufferInfo& bufferInfo) override;
+        void apply(const ubyteArray& array) override;
         void apply(const ushortArray& array) override;
         void apply(const uintArray& array) override;
+
+        void apply(const TextTechnique& technique) override;
 
         //
         // provide virtual functions for concrete Intersector implementations to provide handling of intersection with mesh geometries
@@ -80,6 +83,7 @@ namespace vsg
     protected:
         ArrayStateStack arrayStateStack;
 
+        ref_ptr<const ubyteArray> ubyte_indices;
         ref_ptr<const ushortArray> ushort_indices;
         ref_ptr<const uintArray> uint_indices;
 

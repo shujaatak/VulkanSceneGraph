@@ -14,7 +14,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/commands/PipelineBarrier.h>
 #include <vsg/core/compare.h>
 #include <vsg/io/Logger.h>
-#include <vsg/io/Options.h>
 #include <vsg/io/write.h>
 #include <vsg/lighting/AmbientLight.h>
 #include <vsg/lighting/DirectionalLight.h>
@@ -80,7 +79,7 @@ int ViewDescriptorSetLayout::compare(const Object& rhs_object) const
     int result = DescriptorSetLayout::compare(rhs_object);
     if (result != 0) return result;
 
-    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+    const auto& rhs = static_cast<decltype(*this)>(rhs_object);
     return compare_pointer(_viewDescriptorSetLayout, rhs._viewDescriptorSetLayout);
 }
 
@@ -119,7 +118,7 @@ int BindViewDescriptorSets::compare(const Object& rhs_object) const
     int result = StateCommand::compare(rhs_object);
     if (result != 0) return result;
 
-    auto& rhs = static_cast<decltype(*this)>(rhs_object);
+    const auto& rhs = static_cast<decltype(*this)>(rhs_object);
 
     if ((result = compare_value(pipelineBindPoint, rhs.pipelineBindPoint))) return result;
     if ((result = compare_pointer(layout, rhs.layout))) return result;
@@ -229,7 +228,7 @@ void ViewDependentState::init(ResourceRequirements& requirements)
     uint32_t shadowHeight = 2048;
     uint32_t maxShadowMaps = 8;
 
-    auto& viewDetails = requirements.views[view];
+    const auto& viewDetails = requirements.views[view];
 
     if ((view->features & (RECORD_LIGHTS | RECORD_SHADOW_MAPS)) != 0)
     {
@@ -289,11 +288,13 @@ void ViewDependentState::init(ResourceRequirements& requirements)
 #endif
 
     lightData = vec4Array::create(lightDataSize);
+    lightData->setValue("name", "lightData");
     lightData->properties.dataVariance = DYNAMIC_DATA_TRANSFER_AFTER_RECORD;
     lightDataBufferInfo = BufferInfo::create(lightData.get());
     descriptorConfigurator->assignDescriptor("lightData", BufferInfoList{lightDataBufferInfo});
 
     viewportData = vec4Array::create(maxViewports);
+    viewportData->setValue("name", "viewportData");
     viewportData->properties.dataVariance = DYNAMIC_DATA_TRANSFER_AFTER_RECORD;
     viewportDataBufferInfo = BufferInfo::create(viewportData.get());
     descriptorConfigurator->assignDescriptor("viewportData", BufferInfoList{viewportDataBufferInfo});
@@ -393,6 +394,8 @@ void ViewDependentState::init(ResourceRequirements& requirements)
 
     Mask shadowMask = 0x1; // TODO: do we inherit from main scene? how?
 
+    auto viewportState = ViewportState::create(VkExtent2D{shadowWidth, shadowHeight});
+
     ref_ptr<View> first_view;
     shadowMaps.resize(maxShadowMaps);
     for (auto& shadowMap : shadowMaps)
@@ -410,6 +413,7 @@ void ViewDependentState::init(ResourceRequirements& requirements)
         shadowMap.view->mask = shadowMask;
         shadowMap.view->camera = Camera::create();
         shadowMap.view->addChild(tcon);
+        shadowMap.view->camera->viewportState = viewportState;
 
         shadowMap.renderGraph = RenderGraph::create();
         shadowMap.renderGraph->addChild(shadowMap.view);
@@ -419,9 +423,9 @@ void ViewDependentState::init(ResourceRequirements& requirements)
 
 void ViewDependentState::update(ResourceRequirements& requirements)
 {
-    if (preRenderCommandGraph && requirements.maxSlot > preRenderCommandGraph->maxSlot)
+    if (preRenderCommandGraph)
     {
-        preRenderCommandGraph->maxSlot = requirements.maxSlot;
+        preRenderCommandGraph->maxSlots.merge(requirements.maxSlots);
     }
 }
 
@@ -446,7 +450,7 @@ void ViewDependentState::compile(Context& context)
         shadowDepthImage->compile(context);
 
         uint32_t layer = 0;
-        for (auto& shadowMap : shadowMaps)
+        for (const auto& shadowMap : shadowMaps)
         {
             // create depth buffer
             auto depthImageView = ImageView::create(shadowDepthImage, VK_IMAGE_ASPECT_DEPTH_BIT);
@@ -584,7 +588,7 @@ void ViewDependentState::traverse(RecordTraversal& rt) const
     };
 
     // clip against near plane
-    // Converting between homogeneous coordinates and Cartesian coordinates can turn internal line segements
+    // Converting between homogeneous coordinates and Cartesian coordinates can turn internal line segments
     // (the section of the line between two points) into external line segments (the line except the part
     // between the points). In particular, this happens for ones that cross the near plane of a perspective
     // projection. This function therefore excludes the section of the frustum on the wrong side of the near
@@ -675,19 +679,38 @@ void ViewDependentState::traverse(RecordTraversal& rt) const
 
     // set up the light data
     auto light_itr = lightData->begin();
-    lightData->dirty();
+    uint32_t numLightDataChanges = 0;
 
-    (*light_itr++) = vec4(static_cast<float>(ambientLights.size()),
-                          static_cast<float>(directionalLights.size()),
-                          static_cast<float>(pointLights.size()),
-                          static_cast<float>(spotLights.size()));
+    auto assignLightData = [&](const vec4& value) -> void {
+        if (*light_itr != value)
+        {
+            *light_itr = value;
+            ++numLightDataChanges;
+        }
+        ++light_itr;
+    };
+
+    auto assignLightData4 = [&](float x, float y, float z, float w) -> void {
+        vec4 value(x, y, z, w);
+        if (*light_itr != value)
+        {
+            *light_itr = value;
+            ++numLightDataChanges;
+        }
+        ++light_itr;
+    };
+
+    assignLightData4(static_cast<float>(ambientLights.size()),
+                     static_cast<float>(directionalLights.size()),
+                     static_cast<float>(pointLights.size()),
+                     static_cast<float>(spotLights.size()));
 
     // lightData requirements = vec4 * (num_ambientLights + 3 * num_directionLights + 3 * num_pointLights + 4 * num_spotLights + 4 * num_shadow_maps)
 
-    for (auto& entry : ambientLights)
+    for (const auto& entry : ambientLights)
     {
         auto light = entry.second;
-        (*light_itr++).set(light->color.r, light->color.g, light->color.b, light->intensity);
+        assignLightData4(light->color.r, light->color.g, light->color.b, light->intensity);
     }
 
     for (auto& [mv, light] : directionalLights)
@@ -696,8 +719,8 @@ void ViewDependentState::traverse(RecordTraversal& rt) const
 
         // assign basic direction light settings to light data
         auto eye_direction = normalize(light->direction * inverse_3x3(mv));
-        (*light_itr++).set(light->color.r, light->color.g, light->color.b, light->intensity);
-        (*light_itr++).set(static_cast<float>(eye_direction.x), static_cast<float>(eye_direction.y), static_cast<float>(eye_direction.z), 0.0f);
+        assignLightData4(light->color.r, light->color.g, light->color.b, light->intensity);
+        assignLightData4(static_cast<float>(eye_direction.x), static_cast<float>(eye_direction.y), static_cast<float>(eye_direction.z), 0.0f);
 
         auto shadowSettings = getActiveShadowSettings(light);
         uint32_t activeNumShadowMaps = shadowSettings ? std::min(shadowSettings->shadowMapCount, numShadowMaps - shadowMapIndex) : 0;
@@ -705,20 +728,20 @@ void ViewDependentState::traverse(RecordTraversal& rt) const
         {
             if (shadowSettings->type_info() == typeid(HardShadows))
             {
-                (*light_itr++).set(static_cast<float>(activeNumShadowMaps), -1.0f, -1.0f, 0.0f);
+                assignLightData4(static_cast<float>(activeNumShadowMaps), -1.0f, -1.0f, 0.0f);
             }
             else if (shadowSettings->type_info() == typeid(SoftShadows))
             {
                 const SoftShadows& pcfShadowSettings = static_cast<const SoftShadows&>(*shadowSettings);
-                (*light_itr++).set(static_cast<float>(activeNumShadowMaps), pcfShadowSettings.penumbraRadius, -1.0f, 0.0f);
+                assignLightData4(static_cast<float>(activeNumShadowMaps), pcfShadowSettings.penumbraRadius, -1.0f, 0.0f);
             }
             else if (shadowSettings->type_info() == typeid(PercentageCloserSoftShadows))
             {
-                (*light_itr++).set(static_cast<float>(activeNumShadowMaps), 0.1f /* todo: calculate blocker search radius */, std::tan(light->angleSubtended / 2), 0.0f);
+                assignLightData4(static_cast<float>(activeNumShadowMaps), 0.1f /* todo: calculate blocker search radius */, std::tan(light->angleSubtended / 2), 0.0f);
             }
         }
         else
-            (*light_itr++).set(0.0f, 0.0f, 0.0f, 0.0f);
+            assignLightData4(0.0f, 0.0f, 0.0f, 0.0f);
 
         if (activeNumShadowMaps == 0) continue;
 
@@ -786,19 +809,19 @@ void ViewDependentState::traverse(RecordTraversal& rt) const
             // convert tex gen matrix to float matrix and assign to light data
             mat4 m(shadowMapTM);
 
-            (*light_itr++) = m[0];
-            (*light_itr++) = m[1];
-            (*light_itr++) = m[2];
-            (*light_itr++) = m[3];
+            assignLightData(m[0]);
+            assignLightData(m[1]);
+            assignLightData(m[2]);
+            assignLightData(m[3]);
 
             // info("m = ", m);
 
             m = inverse(m);
 
-            (*light_itr++) = m[0];
-            (*light_itr++) = m[1];
-            (*light_itr++) = m[2];
-            (*light_itr++) = m[3];
+            assignLightData(m[0]);
+            assignLightData(m[1]);
+            assignLightData(m[2]);
+            assignLightData(m[3]);
 
             // advance to the next shadowMap
             shadowMapIndex++;
@@ -845,8 +868,8 @@ void ViewDependentState::traverse(RecordTraversal& rt) const
     for (auto& [mv, light] : pointLights)
     {
         auto eye_position = mv * light->position;
-        (*light_itr++).set(light->color.r, light->color.g, light->color.b, light->intensity);
-        (*light_itr++).set(static_cast<float>(eye_position.x), static_cast<float>(eye_position.y), static_cast<float>(eye_position.z), 0.0f);
+        assignLightData4(light->color.r, light->color.g, light->color.b, light->intensity);
+        assignLightData4(static_cast<float>(eye_position.x), static_cast<float>(eye_position.y), static_cast<float>(eye_position.z), 0.0f);
     }
 
     for (auto& [mv, light] : spotLights)
@@ -855,9 +878,9 @@ void ViewDependentState::traverse(RecordTraversal& rt) const
         auto eye_direction = normalize(light->direction * inverse_3x3(mv));
         float cos_innerAngle = static_cast<float>(cos(light->innerAngle));
         float cos_outerAngle = static_cast<float>(cos(light->outerAngle));
-        (*light_itr++).set(light->color.r, light->color.g, light->color.b, light->intensity);
-        (*light_itr++).set(static_cast<float>(eye_position.x), static_cast<float>(eye_position.y), static_cast<float>(eye_position.z), cos_innerAngle);
-        (*light_itr++).set(static_cast<float>(eye_direction.x), static_cast<float>(eye_direction.y), static_cast<float>(eye_direction.z), cos_outerAngle);
+        assignLightData4(light->color.r, light->color.g, light->color.b, light->intensity);
+        assignLightData4(static_cast<float>(eye_position.x), static_cast<float>(eye_position.y), static_cast<float>(eye_position.z), cos_innerAngle);
+        assignLightData4(static_cast<float>(eye_direction.x), static_cast<float>(eye_direction.y), static_cast<float>(eye_direction.z), cos_outerAngle);
 
         auto shadowSettings = getActiveShadowSettings(light);
         uint32_t activeNumShadowMaps = shadowSettings ? std::min(shadowSettings->shadowMapCount, numShadowMaps - shadowMapIndex) : 0;
@@ -865,20 +888,20 @@ void ViewDependentState::traverse(RecordTraversal& rt) const
         {
             if (shadowSettings->type_info() == typeid(HardShadows))
             {
-                (*light_itr++).set(static_cast<float>(activeNumShadowMaps), -1.0f, -1.0f, 0.0f);
+                assignLightData4(static_cast<float>(activeNumShadowMaps), -1.0f, -1.0f, 0.0f);
             }
             else if (shadowSettings->type_info() == typeid(SoftShadows))
             {
                 const SoftShadows& pcfShadowSettings = static_cast<const SoftShadows&>(*shadowSettings);
-                (*light_itr++).set(static_cast<float>(activeNumShadowMaps), pcfShadowSettings.penumbraRadius, -1.0f, 0.0f);
+                assignLightData4(static_cast<float>(activeNumShadowMaps), pcfShadowSettings.penumbraRadius, -1.0f, 0.0f);
             }
             else if (shadowSettings->type_info() == typeid(PercentageCloserSoftShadows))
             {
-                (*light_itr++).set(static_cast<float>(activeNumShadowMaps), 0.1f /* todo: calculate blocker search radius */, static_cast<float>(light->radius), 0.0f);
+                assignLightData4(static_cast<float>(activeNumShadowMaps), 0.1f /* todo: calculate blocker search radius */, static_cast<float>(light->radius), 0.0f);
             }
         }
         else
-            (*light_itr++).set(0.0f, 0.0f, 0.0f, 0.0f);
+            assignLightData4(0.0f, 0.0f, 0.0f, 0.0f);
 
         if (activeNumShadowMaps == 0) continue;
 
@@ -961,19 +984,19 @@ void ViewDependentState::traverse(RecordTraversal& rt) const
             // convert tex gen matrix to float matrix and assign to light data
             mat4 m(shadowMapTM);
 
-            (*light_itr++) = m[0];
-            (*light_itr++) = m[1];
-            (*light_itr++) = m[2];
-            (*light_itr++) = m[3];
+            assignLightData(m[0]);
+            assignLightData(m[1]);
+            assignLightData(m[2]);
+            assignLightData(m[3]);
 
             // info("m = ", m);
 
             m = inverse(m);
 
-            (*light_itr++) = m[0];
-            (*light_itr++) = m[1];
-            (*light_itr++) = m[2];
-            (*light_itr++) = m[3];
+            assignLightData(m[0]);
+            assignLightData(m[1]);
+            assignLightData(m[2]);
+            assignLightData(m[3]);
 
             // advance to the next shadowMap
             shadowMapIndex++;
@@ -1015,6 +1038,11 @@ void ViewDependentState::traverse(RecordTraversal& rt) const
 
             updateCamera(clip_near.z, clip_far.z, clipToWorld);
         }
+    }
+
+    if (numLightDataChanges > 0)
+    {
+        lightData->dirty();
     }
 
     if (requiresPerRenderShadowMaps && preRenderCommandGraph)

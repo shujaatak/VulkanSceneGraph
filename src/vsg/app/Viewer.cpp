@@ -31,9 +31,11 @@ Viewer::Viewer() :
     updateOperations(UpdateOperations::create()),
     animationManager(AnimationManager::create()),
     status(vsg::ActivityStatus::create()),
-    _start_point(clock::now())
+    _firstFrame(true),
+    _start_point(clock::now()),
+    _frameStamp(FrameStamp::create(_start_point, 0, 0.0))
 {
-    CPU_INSTRUMENTATION_L1_NC(instrumentation, "Viewer costructor", COLOR_VIEWER);
+    CPU_INSTRUMENTATION_L1_NC(instrumentation, "Viewer constructor", COLOR_VIEWER);
 }
 
 Viewer::~Viewer()
@@ -56,7 +58,7 @@ void Viewer::deviceWaitIdle() const
         if (window->getDevice()) devices.insert(*(window->getDevice()));
     }
 
-    for (auto& task : recordAndSubmitTasks)
+    for (const auto& task : recordAndSubmitTasks)
     {
         for (auto& cg : task->commandGraphs)
         {
@@ -88,7 +90,7 @@ void Viewer::removeWindow(ref_ptr<Window> window)
 
     // create a new list of CommandGraphs not associated with removed window
     CommandGraphs commandGraphs;
-    for (auto& task : recordAndSubmitTasks)
+    for (const auto& task : recordAndSubmitTasks)
     {
         for (auto& cg : task->commandGraphs)
         {
@@ -169,9 +171,9 @@ bool Viewer::advanceToNextFrame(double simulationTime)
 
     // create FrameStamp for frame
     auto time = vsg::clock::now();
-    if (!_frameStamp)
+    if (_firstFrame)
     {
-        _start_point = time;
+        _firstFrame = false;
 
         if (simulationTime == UseTimeSinceStartPoint) simulationTime = 0.0;
 
@@ -282,15 +284,12 @@ void Viewer::compile(ref_ptr<ResourceHints> hints)
         return;
     }
 
-    auto start_tick = clock::now();
-
     bool containsPagedLOD = false;
     ref_ptr<DatabasePager> databasePager;
 
     struct DeviceResources
     {
         CollectResourceRequirements collectResources;
-        vsg::ref_ptr<vsg::CompileTraversal> compile;
     };
 
     // find which devices are available and the resources required for them
@@ -299,12 +298,15 @@ void Viewer::compile(ref_ptr<ResourceHints> hints)
     for (auto& task : recordAndSubmitTasks)
     {
         auto& collectResources = deviceResourceMap[task->device].collectResources;
+        auto& resourceRequirements = collectResources.requirements;
         if (hints) hints->accept(collectResources);
 
         for (auto& commandGraph : task->commandGraphs)
         {
             commandGraph->accept(collectResources);
         }
+
+        task->transferTask->minimumStagingBufferSize = resourceRequirements.minimumStagingBufferSize;
 
         if (task->databasePager && !databasePager) databasePager = task->databasePager;
     }
@@ -319,21 +321,6 @@ void Viewer::compile(ref_ptr<ResourceHints> hints)
         views.insert(resourceRequirements.views.begin(), resourceRequirements.views.end());
 
         if (resourceRequirements.containsPagedLOD) containsPagedLOD = true;
-
-        auto physicalDevice = device->getPhysicalDevice();
-
-        auto queueFamily = physicalDevice->getQueueFamily(VK_QUEUE_GRAPHICS_BIT); // TODO : could we just use transfer bit?
-
-        deviceResources.compile = CompileTraversal::create(device, resourceRequirements);
-        if (instrumentation) deviceResources.compile->assignInstrumentation(instrumentation);
-
-        for (auto& context : deviceResources.compile->contexts)
-        {
-            context->commandPool = vsg::CommandPool::create(device, queueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-            context->graphicsQueue = device->getQueue(queueFamily);
-
-            context->reserve(resourceRequirements);
-        }
     }
 
     // assign the viewID's to each View
@@ -343,7 +330,7 @@ void Viewer::compile(ref_ptr<ResourceHints> hints)
         for (auto& binNumber : binDetails.indices)
         {
             bool binNumberMatched = false;
-            for (auto& bin : view->bins)
+            for (const auto& bin : view->bins)
             {
                 if (bin->binNumber == binNumber)
                 {
@@ -365,40 +352,22 @@ void Viewer::compile(ref_ptr<ResourceHints> hints)
     }
 
     // create the Vulkan objects
-    for (auto& task : recordAndSubmitTasks)
+    for (const auto& task : recordAndSubmitTasks)
     {
-        auto& deviceResource = deviceResourceMap[task->device];
-        auto& resourceRequirements = deviceResource.collectResources.requirements;
+        const auto& deviceResource = deviceResourceMap[task->device];
+        const auto& resourceRequirements = deviceResource.collectResources.requirements;
 
         bool task_containsPagedLOD = false;
 
-        for (auto& commandGraph : task->commandGraphs)
+        for (const auto& commandGraph : task->commandGraphs)
         {
-            commandGraph->maxSlot = resourceRequirements.maxSlot;
-            commandGraph->accept(*deviceResource.compile);
-
+            commandGraph->maxSlots = resourceRequirements.maxSlots;
             if (resourceRequirements.containsPagedLOD) task_containsPagedLOD = true;
         }
 
         if (task_containsPagedLOD)
         {
             if (!task->databasePager) task->databasePager = databasePager;
-        }
-    }
-
-    // assign dynamic data to transfer tasks
-    for (auto& task : recordAndSubmitTasks)
-    {
-        auto& deviceResource = deviceResourceMap[task->device];
-        auto& resourceRequirements = deviceResource.collectResources.requirements;
-
-        if (task->earlyTransferTask)
-        {
-            task->earlyTransferTask->assign(resourceRequirements.earlyDynamicData);
-        }
-        if (task->lateTransferTask)
-        {
-            task->lateTransferTask->assign(resourceRequirements.lateDynamicData);
         }
     }
 
@@ -415,30 +384,25 @@ void Viewer::compile(ref_ptr<ResourceHints> hints)
         databasePager->compileManager = compileManager;
     }
 
-    // record any transfer commands
-    for (auto& dp : deviceResourceMap)
+    for (auto& task : recordAndSubmitTasks)
     {
-        dp.second.compile->record();
-    }
-
-    // wait for the transfers to complete
-    for (auto& dp : deviceResourceMap)
-    {
-        dp.second.compile->waitForCompletion();
+        auto& deviceResource = deviceResourceMap[task->device];
+        auto& resourceRequirements = deviceResource.collectResources.requirements;
+        compileManager->compileTask(task, resourceRequirements);
+        task->transferTask->assign(resourceRequirements.dynamicData);
     }
 
     // start any DatabasePagers
-    for (auto& task : recordAndSubmitTasks)
+    for (const auto& task : recordAndSubmitTasks)
     {
         if (task->databasePager)
         {
-            task->databasePager->start();
+            if (hints)
+                task->databasePager->start(hints->numDatabasePagerReadThreads);
+            else
+                task->databasePager->start();
         }
     }
-
-    auto end_tick = clock::now();
-    auto compile_time = std::chrono::duration<double, std::chrono::milliseconds::period>(end_tick - start_tick).count();
-    debug("Viewer::compile() ", compile_time, "ms");
 }
 
 void Viewer::assignRecordAndSubmitTaskAndPresentation(CommandGraphs in_commandGraphs)
@@ -451,7 +415,7 @@ void Viewer::assignRecordAndSubmitTaskAndPresentation(CommandGraphs in_commandGr
 
     // if a DatabasePager is already assigned re-assign
     ref_ptr<DatabasePager> databasePager;
-    for (auto& task : recordAndSubmitTasks)
+    for (const auto& task : recordAndSubmitTasks)
     {
         if (task->databasePager)
         {
@@ -558,7 +522,7 @@ void Viewer::assignRecordAndSubmitTaskAndPresentation(CommandGraphs in_commandGr
                 commandGraph->accept(findWindows);
             }
 
-            Windows windows(findWindows.windows.begin(), findWindows.windows.end());
+            Windows activeWindows(findWindows.windows.begin(), findWindows.windows.end());
 
             auto renderFinishedSemaphore = vsg::Semaphore::create(device);
 
@@ -567,19 +531,18 @@ void Viewer::assignRecordAndSubmitTaskAndPresentation(CommandGraphs in_commandGr
             recordAndSubmitTask->commandGraphs = commandGraphs;
             recordAndSubmitTask->databasePager = databasePager;
             recordAndSubmitTask->signalSemaphores.emplace_back(renderFinishedSemaphore);
-            recordAndSubmitTask->windows = windows;
+            recordAndSubmitTask->windows = activeWindows;
             recordAndSubmitTask->queue = mainQueue;
             recordAndSubmitTasks.emplace_back(recordAndSubmitTask);
 
-            recordAndSubmitTask->earlyTransferTask->transferQueue = transferQueue;
-            recordAndSubmitTask->lateTransferTask->transferQueue = transferQueue;
+            recordAndSubmitTask->transferTask->transferQueue = transferQueue;
 
             // assign instrumentation
             if (instrumentation) recordAndSubmitTask->assignInstrumentation(instrumentation);
 
             auto presentation = vsg::Presentation::create();
             presentation->waitSemaphores.emplace_back(renderFinishedSemaphore);
-            presentation->windows = windows;
+            presentation->windows = activeWindows;
             presentation->queue = device->getQueue(deviceQueueFamily.presentFamily);
             presentations.emplace_back(presentation);
         }
@@ -593,8 +556,7 @@ void Viewer::assignRecordAndSubmitTaskAndPresentation(CommandGraphs in_commandGr
             recordAndSubmitTask->queue = mainQueue;
             recordAndSubmitTasks.emplace_back(recordAndSubmitTask);
 
-            recordAndSubmitTask->earlyTransferTask->transferQueue = transferQueue;
-            recordAndSubmitTask->lateTransferTask->transferQueue = transferQueue;
+            recordAndSubmitTask->transferTask->transferQueue = transferQueue;
 
             // assign instrumentation
             if (instrumentation) recordAndSubmitTask->assignInstrumentation(instrumentation);
@@ -610,7 +572,7 @@ void Viewer::addRecordAndSubmitTaskAndPresentation(CommandGraphs commandGraphs)
 
     // collect the existing CommandGraphs
     CommandGraphs combinedCommandGraphs;
-    for (auto& task : recordAndSubmitTasks)
+    for (const auto& task : recordAndSubmitTasks)
     {
         for (auto& cg : task->commandGraphs)
         {
@@ -631,7 +593,7 @@ void Viewer::setupThreading()
 
     // check how many valid tasks there are.
     uint32_t numValidTasks = 0;
-    for (auto& task : recordAndSubmitTasks)
+    for (const auto& task : recordAndSubmitTasks)
     {
         if (!task->commandGraphs.empty())
         {
@@ -653,7 +615,7 @@ void Viewer::setupThreading()
     // set up required threads for each task
     for (auto& task : recordAndSubmitTasks)
     {
-        if (task->commandGraphs.size() == 1 && !task->earlyTransferTask)
+        if (task->commandGraphs.size() == 1 && !task->transferTask)
         {
             // task only contains a single CommandGraph so keep thread simple
             auto run = [](ref_ptr<RecordAndSubmitTask> viewer_task, ref_ptr<FrameBlock> viewer_frameBlock, ref_ptr<Barrier> submissionCompleted, const std::string& threadName) {
@@ -702,7 +664,7 @@ void Viewer::setupThreading()
             };
 
             uint32_t numThreads = static_cast<uint32_t>(task->commandGraphs.size());
-            if (task->earlyTransferTask) ++numThreads;
+            if (task->transferTask) ++numThreads;
 
             ref_ptr<SharedData> sharedData = SharedData::create(task, _frameBlock, _submissionCompleted, numThreads);
 
@@ -756,7 +718,7 @@ void Viewer::setupThreading()
                 }
             };
 
-            auto run_transfer = [](ref_ptr<SharedData> data, ref_ptr<TransferTask> transferTask, const std::string& threadName) {
+            auto run_transfer = [](ref_ptr<SharedData> data, ref_ptr<TransferTask> transferTask, TransferTask::TransferMask transferMask, const std::string& threadName) {
                 auto local_instrumentation = shareOrDuplicateForThreadSafety(data->task->instrumentation);
                 if (local_instrumentation) local_instrumentation->setThreadName(threadName);
 
@@ -771,7 +733,13 @@ void Viewer::setupThreading()
 
                     //vsg::info("run_transfer");
 
-                    /*VkResult result =*/transferTask->transferDynamicData();
+                    if (auto transfer = transferTask->transferData(transferMask); transfer.result == VK_SUCCESS)
+                    {
+                        if (transfer.dataTransferredSemaphore)
+                        {
+                            data->task->earlyDataTransferredSemaphore = transfer.dataTransferredSemaphore;
+                        }
+                    }
 
                     data->recordCompletedBarrier->arrive_and_wait();
                 }
@@ -782,12 +750,12 @@ void Viewer::setupThreading()
                 if (i == 0)
                     threads.emplace_back(run_primary, sharedData, task->commandGraphs[i], make_string("Viewer primary thread"));
                 else
-                    threads.emplace_back(run_secondary, sharedData, task->commandGraphs[i], make_string("Viewer seconary thread ", i));
+                    threads.emplace_back(run_secondary, sharedData, task->commandGraphs[i], make_string("Viewer secondary thread ", i));
             }
 
-            if (task->earlyTransferTask)
+            if (task->transferTask)
             {
-                threads.emplace_back(run_transfer, sharedData, task->earlyTransferTask, make_string("Viewer earlyDynamicData thread"));
+                threads.emplace_back(run_transfer, sharedData, task->transferTask, TransferTask::TRANSFER_BEFORE_RECORD_TRAVERSAL, make_string("Viewer early transferTask thread"));
             }
         }
     }
@@ -819,7 +787,7 @@ void Viewer::update()
     CPU_INSTRUMENTATION_L1_NC(instrumentation, "Viewer update", COLOR_UPDATE);
 
     // merge any updates from the DatabasePager
-    for (auto& task : recordAndSubmitTasks)
+    for (const auto& task : recordAndSubmitTasks)
     {
         if (task->databasePager)
         {
@@ -841,7 +809,7 @@ void Viewer::recordAndSubmit()
     CPU_INSTRUMENTATION_L1_NC(instrumentation, "Viewer recordAndSubmitTask", COLOR_VIEWER);
 
     // reset connected ExecuteCommands
-    for (auto& recordAndSubmitTask : recordAndSubmitTasks)
+    for (const auto& recordAndSubmitTask : recordAndSubmitTasks)
     {
         for (auto& commandGraph : recordAndSubmitTask->commandGraphs)
         {

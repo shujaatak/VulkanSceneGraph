@@ -24,6 +24,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/Export.h>
 #include <vsg/core/External.h>
 #include <vsg/core/Inherit.h>
+#include <vsg/core/IntrusiveAllocator.h>
 #include <vsg/core/Mask.h>
 #include <vsg/core/MemorySlots.h>
 #include <vsg/core/Object.h>
@@ -44,8 +45,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/maths/clamp.h>
 #include <vsg/maths/color.h>
 #include <vsg/maths/common.h>
+#include <vsg/maths/mat2.h>
 #include <vsg/maths/mat3.h>
 #include <vsg/maths/mat4.h>
+#include <vsg/maths/numbers.h>
 #include <vsg/maths/plane.h>
 #include <vsg/maths/quat.h>
 #include <vsg/maths/sample.h>
@@ -59,11 +62,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/nodes/AbsoluteTransform.h>
 #include <vsg/nodes/Bin.h>
 #include <vsg/nodes/Compilable.h>
+#include <vsg/nodes/CoordinateFrame.h>
 #include <vsg/nodes/CullGroup.h>
 #include <vsg/nodes/CullNode.h>
 #include <vsg/nodes/DepthSorted.h>
 #include <vsg/nodes/Geometry.h>
 #include <vsg/nodes/Group.h>
+#include <vsg/nodes/InstanceDraw.h>
+#include <vsg/nodes/InstanceDrawIndexed.h>
+#include <vsg/nodes/InstanceNode.h>
 #include <vsg/nodes/InstrumentationNode.h>
 #include <vsg/nodes/LOD.h>
 #include <vsg/nodes/Layer.h>
@@ -83,12 +90,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/animation/Animation.h>
 #include <vsg/animation/AnimationGroup.h>
 #include <vsg/animation/AnimationManager.h>
-#include <vsg/animation/CameraAnimation.h>
+#include <vsg/animation/CameraAnimationHandler.h>
+#include <vsg/animation/CameraSampler.h>
 #include <vsg/animation/FindAnimations.h>
 #include <vsg/animation/Joint.h>
 #include <vsg/animation/JointSampler.h>
 #include <vsg/animation/MorphSampler.h>
 #include <vsg/animation/TransformSampler.h>
+#include <vsg/animation/time_value.h>
 
 // Lighting header files
 #include <vsg/lighting/AmbientLight.h>
@@ -178,6 +187,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/threading/ActivityStatus.h>
 #include <vsg/threading/Affinity.h>
 #include <vsg/threading/Barrier.h>
+#include <vsg/threading/DeleteQueue.h>
 #include <vsg/threading/FrameBlock.h>
 #include <vsg/threading/Latch.h>
 #include <vsg/threading/OperationQueue.h>
@@ -230,6 +240,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/vk/CommandPool.h>
 #include <vsg/vk/Context.h>
 #include <vsg/vk/DescriptorPool.h>
+#include <vsg/vk/DescriptorPools.h>
 #include <vsg/vk/Device.h>
 #include <vsg/vk/DeviceExtensions.h>
 #include <vsg/vk/DeviceFeatures.h>
@@ -244,6 +255,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/vk/RenderPass.h>
 #include <vsg/vk/ResourceRequirements.h>
 #include <vsg/vk/Semaphore.h>
+#include <vsg/vk/Slots.h>
 #include <vsg/vk/State.h>
 #include <vsg/vk/SubmitCommands.h>
 #include <vsg/vk/Surface.h>
@@ -259,6 +271,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/io/DatabasePager.h>
 #include <vsg/io/FileSystem.h>
 #include <vsg/io/Input.h>
+#include <vsg/io/JSONParser.h>
 #include <vsg/io/Logger.h>
 #include <vsg/io/ObjectFactory.h>
 #include <vsg/io/Options.h>
@@ -268,6 +281,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/io/VSG.h>
 #include <vsg/io/convert_utf.h>
 #include <vsg/io/glsl.h>
+#include <vsg/io/json.h>
 #include <vsg/io/mem_stream.h>
 #include <vsg/io/read.h>
 #include <vsg/io/read_line.h>
@@ -281,6 +295,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/utils/Builder.h>
 #include <vsg/utils/CommandLine.h>
 #include <vsg/utils/ComputeBounds.h>
+#include <vsg/utils/CoordinateSpace.h>
 #include <vsg/utils/FindDynamicObjects.h>
 #include <vsg/utils/GpuAnnotation.h>
 #include <vsg/utils/GraphicsPipelineConfigurator.h>
@@ -288,6 +303,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/utils/Intersector.h>
 #include <vsg/utils/LineSegmentIntersector.h>
 #include <vsg/utils/LoadPagedLOD.h>
+#include <vsg/utils/PolytopeIntersector.h>
+#include <vsg/utils/PrimitiveFunctor.h>
 #include <vsg/utils/Profiler.h>
 #include <vsg/utils/PropagateDynamicObjects.h>
 #include <vsg/utils/ShaderCompiler.h>

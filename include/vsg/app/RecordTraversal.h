@@ -16,6 +16,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/Object.h>
 #include <vsg/core/type_name.h>
 #include <vsg/maths/mat4.h>
+#include <vsg/vk/Slots.h>
 
 #include <set>
 #include <vector>
@@ -36,6 +37,7 @@ namespace vsg
     class Layer;
     class Transform;
     class MatrixTransform;
+    class CoordinateFrame;
     class Joint;
     class TileDatabase;
     class VertexDraw;
@@ -61,6 +63,9 @@ namespace vsg
     class CommandGraph;
     class RecordedCommandBuffers;
     class Instrumentation;
+    class InstanceNode;
+    class InstanceDraw;
+    class InstanceDrawIndexed;
 
     VSG_type_name(vsg::RecordTraversal);
 
@@ -68,7 +73,7 @@ namespace vsg
     class VSG_DECLSPEC RecordTraversal : public Object
     {
     public:
-        explicit RecordTraversal(uint32_t in_maxSlot = 2, std::set<Bin*> in_bins = {});
+        explicit RecordTraversal(const Slots& in_maxSlots = {}, const std::set<Bin*>& in_bins = {});
 
         RecordTraversal(const RecordTraversal&) = delete;
         RecordTraversal& operator=(const RecordTraversal& rhs) = delete;
@@ -84,6 +89,9 @@ namespace vsg
 
         Mask traversalMask = MASK_ALL;
         Mask overrideMask = MASK_OFF;
+
+        /// Light::intensity minimum value for a light to be passed to GPU.
+        float intensityMinimum = 0.001f;
 
         ref_ptr<Instrumentation> instrumentation;
 
@@ -135,9 +143,15 @@ namespace vsg
         // transform nodes
         void apply(const Transform& transform);
         void apply(const MatrixTransform& mt);
+        void apply(const CoordinateFrame& cf);
 
         // Animation nodes
         void apply(const Joint& joint);
+
+        // instance nodes
+        void apply(const InstanceNode& instanceNode);
+        void apply(const InstanceDraw& instanceDraw);
+        void apply(const InstanceDrawIndexed& instanceDrawIndexed);
 
         // Vulkan nodes
         void apply(const StateGroup& object);

@@ -53,7 +53,7 @@ namespace vsg
             if (_data)
             {
                 auto dest_v = _data;
-                for (auto& v : rhs) *(dest_v++) = v;
+                for (const auto& v : rhs) *(dest_v++) = v;
                 dirty();
             }
         }
@@ -101,6 +101,15 @@ namespace vsg
         static ref_ptr<Array2D> create(Args&&... args)
         {
             return ref_ptr<Array2D>(new Array2D(std::forward<Args>(args)...));
+        }
+
+        template<typename... Args>
+        static ref_ptr<Array2D> create_if(bool flag, Args&&... args)
+        {
+            if (flag)
+                return ref_ptr<Array2D>(new Array2D(std::forward<Args>(args)...));
+            else
+                return {};
         }
 
         ref_ptr<Object> clone(const CopyOp& copyop = {}) const override
@@ -210,7 +219,7 @@ namespace vsg
             if (_data)
             {
                 auto dest_v = _data;
-                for (auto& v : rhs) *(dest_v++) = v;
+                for (const auto& v : rhs) *(dest_v++) = v;
             }
 
             dirty();

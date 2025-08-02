@@ -18,7 +18,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/commands/Commands.h>
 #include <vsg/io/DatabasePager.h>
 #include <vsg/io/Logger.h>
-#include <vsg/io/Options.h>
 #include <vsg/io/stream.h>
 #include <vsg/lighting/AmbientLight.h>
 #include <vsg/lighting/DirectionalLight.h>
@@ -27,11 +26,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/lighting/SpotLight.h>
 #include <vsg/maths/plane.h>
 #include <vsg/nodes/Bin.h>
+#include <vsg/nodes/CoordinateFrame.h>
 #include <vsg/nodes/CullGroup.h>
 #include <vsg/nodes/CullNode.h>
 #include <vsg/nodes/DepthSorted.h>
 #include <vsg/nodes/Geometry.h>
 #include <vsg/nodes/Group.h>
+#include <vsg/nodes/InstanceDraw.h>
+#include <vsg/nodes/InstanceDrawIndexed.h>
+#include <vsg/nodes/InstanceNode.h>
 #include <vsg/nodes/LOD.h>
 #include <vsg/nodes/Layer.h>
 #include <vsg/nodes/MatrixTransform.h>
@@ -56,14 +59,14 @@ using namespace vsg;
 
 #define INLINE_TRAVERSE 0
 
-RecordTraversal::RecordTraversal(uint32_t in_maxSlot, std::set<Bin*> in_bins) :
-    _state(new State(in_maxSlot))
+RecordTraversal::RecordTraversal(const Slots& in_maxSlots, const std::set<Bin*>& in_bins) :
+    _state(new State(in_maxSlots))
 {
     CPU_INSTRUMENTATION_L1_C(instrumentation, COLOR_RECORD);
 
     _minimumBinNumber = 0;
     int32_t maximumBinNumber = 0;
-    for (auto& bin : in_bins)
+    for (const auto& bin : in_bins)
     {
         if (bin->binNumber < _minimumBinNumber) _minimumBinNumber = bin->binNumber;
         if (bin->binNumber > maximumBinNumber) maximumBinNumber = bin->binNumber;
@@ -308,7 +311,7 @@ void RecordTraversal::apply(const DepthSorted& depthSorted)
     if (_state->intersect(depthSorted.bound))
     {
         const auto& mv = _state->modelviewMatrixStack.top();
-        auto& center = depthSorted.bound.center;
+        const auto& center = depthSorted.bound.center;
         auto distance = -(mv[0][2] * center.x + mv[1][2] * center.y + mv[2][2] * center.z + mv[3][2]);
 
         addToBin(depthSorted.binNumber, distance, depthSorted.child);
@@ -363,7 +366,7 @@ void RecordTraversal::apply(const AmbientLight& light)
     CPU_INSTRUMENTATION_L2_O(instrumentation, &light);
 
     //debug("RecordTraversal::apply(AmbientLight) ", light.className());
-    if (_viewDependentState) _viewDependentState->ambientLights.emplace_back(_state->modelviewMatrixStack.top(), &light);
+    if (light.intensity >= intensityMinimum && _viewDependentState) _viewDependentState->ambientLights.emplace_back(_state->modelviewMatrixStack.top(), &light);
 }
 
 void RecordTraversal::apply(const DirectionalLight& light)
@@ -371,7 +374,7 @@ void RecordTraversal::apply(const DirectionalLight& light)
     CPU_INSTRUMENTATION_L2_O(instrumentation, &light);
 
     //debug("RecordTraversal::apply(DirectionalLight) ", light.className());
-    if (_viewDependentState) _viewDependentState->directionalLights.emplace_back(_state->modelviewMatrixStack.top(), &light);
+    if (light.intensity >= intensityMinimum && _viewDependentState) _viewDependentState->directionalLights.emplace_back(_state->modelviewMatrixStack.top(), &light);
 }
 
 void RecordTraversal::apply(const PointLight& light)
@@ -379,7 +382,7 @@ void RecordTraversal::apply(const PointLight& light)
     CPU_INSTRUMENTATION_L2_O(instrumentation, &light);
 
     //debug("RecordTraversal::apply(PointLight) ", light.className());
-    if (_viewDependentState) _viewDependentState->pointLights.emplace_back(_state->modelviewMatrixStack.top(), &light);
+    if (light.intensity >= intensityMinimum && _viewDependentState) _viewDependentState->pointLights.emplace_back(_state->modelviewMatrixStack.top(), &light);
 }
 
 void RecordTraversal::apply(const SpotLight& light)
@@ -387,7 +390,7 @@ void RecordTraversal::apply(const SpotLight& light)
     CPU_INSTRUMENTATION_L2_O(instrumentation, &light);
 
     //debug("RecordTraversal::apply(SpotLight) ", light.className());
-    if (_viewDependentState) _viewDependentState->spotLights.emplace_back(_state->modelviewMatrixStack.top(), &light);
+    if (light.intensity >= intensityMinimum && _viewDependentState) _viewDependentState->spotLights.emplace_back(_state->modelviewMatrixStack.top(), &light);
 }
 
 // transform nodes
@@ -435,12 +438,73 @@ void RecordTraversal::apply(const MatrixTransform& mt)
     _state->dirty = true;
 }
 
+void RecordTraversal::apply(const CoordinateFrame& cf)
+{
+    GPU_INSTRUMENTATION_L2_NCO(instrumentation, *getCommandBuffer(), "CoordinateFrame", COLOR_RECORD_L2, &cf);
+
+    const View* parentView = _viewDependentState ? _viewDependentState->view : nullptr;
+    const Camera* camera = parentView ? parentView->camera : nullptr;
+    const ViewMatrix* viewMatrix = camera ? camera->viewMatrix : nullptr;
+
+    if (viewMatrix)
+    {
+        _state->modelviewMatrixStack.push(viewMatrix->transform(cf.origin) * vsg::rotate(cf.rotation));
+    }
+    else
+    {
+        _state->modelviewMatrixStack.push(cf);
+    }
+
+    _state->dirty = true;
+
+    if (cf.subgraphRequiresLocalFrustum)
+    {
+        _state->pushFrustum();
+        cf.traverse(*this);
+        _state->popFrustum();
+    }
+    else
+    {
+        cf.traverse(*this);
+    }
+
+    _state->modelviewMatrixStack.pop();
+    _state->dirty = true;
+}
+
 // Animation nodes
 void RecordTraversal::apply(const Joint&)
 {
     CPU_INSTRUMENTATION_L2(instrumentation);
 
     // non op for RiggedJoint as it's designed not to have any renderable children
+}
+
+void RecordTraversal::apply(const InstanceNode& instanceNode)
+{
+    CPU_INSTRUMENTATION_L2(instrumentation);
+
+    if (instanceNode.child)
+    {
+        _state->_commandBuffer->instanceNode = &instanceNode;
+        instanceNode.child->accept(*this);
+    }
+}
+
+void RecordTraversal::apply(const InstanceDraw& instanceDraw)
+{
+    CPU_INSTRUMENTATION_L2(instrumentation);
+
+    _state->record();
+    instanceDraw.record(*(_state->_commandBuffer));
+}
+
+void RecordTraversal::apply(const InstanceDrawIndexed& instanceDrawIndexed)
+{
+    CPU_INSTRUMENTATION_L2(instrumentation);
+
+    _state->record();
+    instanceDrawIndexed.record(*(_state->_commandBuffer));
 }
 
 // Vulkan nodes
@@ -450,19 +514,14 @@ void RecordTraversal::apply(const StateGroup& stateGroup)
 
     //debug("Visiting StateGroup");
 
-    for (auto& command : stateGroup.stateCommands)
-    {
-        _state->stateStacks[command->slot].push(command);
-    }
-    _state->dirty = true;
+    auto begin = stateGroup.stateCommands.begin();
+    auto end = stateGroup.stateCommands.end();
+
+    _state->push(begin, end);
 
     stateGroup.traverse(*this);
 
-    for (auto& command : stateGroup.stateCommands)
-    {
-        _state->stateStacks[command->slot].pop();
-    }
-    _state->dirty = true;
+    _state->pop(begin, end);
 }
 
 void RecordTraversal::apply(const Commands& commands)
@@ -497,6 +556,9 @@ void RecordTraversal::apply(const View& view)
 {
     GPU_INSTRUMENTATION_L1_NCO(instrumentation, *getCommandBuffer(), "View", COLOR_RECORD_L1, &view);
 
+    // dirty the state stacks to ensure state is newly applied for the View.
+    _state->dirtyStateStacks();
+
     // note, View::accept() updates the RecordTraversal's traversalMask
     auto cached_traversalMask = _state->_commandBuffer->traversalMask;
     _state->_commandBuffer->traversalMask = traversalMask;
@@ -515,7 +577,7 @@ void RecordTraversal::apply(const View& view)
     // assign and clear the View's bins
     int32_t min_binNumber = 0;
     int32_t max_binNumber = 0;
-    for (auto& bin : view.bins)
+    for (const auto& bin : view.bins)
     {
         if (bin->binNumber < min_binNumber) min_binNumber = bin->binNumber;
         if (bin->binNumber > max_binNumber) max_binNumber = bin->binNumber;
@@ -536,37 +598,50 @@ void RecordTraversal::apply(const View& view)
         _viewDependentState->clear();
     }
 
+    _state->pushView(view);
+
     if (view.camera)
     {
         _state->inheritViewForLODScaling = (view.features & INHERIT_VIEWPOINT) != 0;
         _state->setProjectionAndViewMatrix(view.camera->projectionMatrix->transform(), view.camera->viewMatrix->transform());
 
-        if (_viewDependentState && _viewDependentState->viewportData && view.camera->viewportState)
+        if (const auto& viewportState = view.camera->viewportState)
         {
-            auto& viewportData = _viewDependentState->viewportData;
-            auto& viewports = view.camera->viewportState->viewports;
-
-            auto dest_itr = viewportData->begin();
-            for (auto src_itr = viewports.begin();
-                 dest_itr != viewportData->end() && src_itr != viewports.end();
-                 ++dest_itr, ++src_itr)
+            if (_viewDependentState)
             {
-                auto& dest_viewport = *dest_itr;
-                vec4 src_viewport(src_itr->x, src_itr->y, src_itr->width, src_itr->height);
-                if (dest_viewport != src_viewport)
+                auto& viewportData = _viewDependentState->viewportData;
+                if (viewportData)
                 {
-                    dest_viewport = src_viewport;
-                    viewportData->dirty();
+                    auto& viewports = viewportState->viewports;
+                    auto dest_itr = viewportData->begin();
+                    for (auto src_itr = viewports.begin();
+                         dest_itr != viewportData->end() && src_itr != viewports.end();
+                         ++dest_itr, ++src_itr)
+                    {
+                        auto& dest_viewport = *dest_itr;
+                        vec4 src_viewport(src_itr->x, src_itr->y, src_itr->width, src_itr->height);
+                        if (dest_viewport != src_viewport)
+                        {
+                            dest_viewport = src_viewport;
+                            viewportData->dirty();
+                        }
+                    }
                 }
             }
-        }
 
-        view.traverse(*this);
+            view.traverse(*this);
+        }
+        else
+        {
+            view.traverse(*this);
+        }
     }
     else
     {
         view.traverse(*this);
     }
+
+    _state->popView(view);
 
     for (auto& bin : view.bins)
     {
